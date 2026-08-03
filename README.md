@@ -1,8 +1,9 @@
 # AeraControl
 
-Avvia e ferma gli applicativi Aera che stanno su un server Windows,
-comandandoli da un client, con le finestre che restano visibili sul
-monitor del server.
+Avvia e ferma gli applicativi relativi ad Aera Remote Functions che
+stanno su un server o macchina Windows che funge da Server Remote
+Functions, comandandoli da un client, con le finestre che restano
+visibili sul monitor del server.
 
 ## Installazione
 
