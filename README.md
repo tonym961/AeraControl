@@ -49,8 +49,8 @@ riavviarlo c'e' il suo pulsante nella console.
 
 | File | Ruolo |
 |---|---|
-| `Setup-AeraControl.exe` | L'installatore: un file solo, non richiede altro |
-| `releases/` | Una cartella per versione, con il suo installatore |
+| `Setup-AeraControl.exe` | L'installatore della versione corrente: un file solo, non richiede altro |
+| `releases/` | Gli installatori delle versioni precedenti, una cartella per numero |
 | `src/*.cs` | I sorgenti |
 
 L'installatore si porta dentro gia' compilati sia la console
@@ -62,8 +62,11 @@ nient'altro da scaricare.
 Client e server hanno numerazioni separate. Si leggono nella barra del
 titolo della console e nel menu del segnalatore.
 
-Ogni versione ha la sua cartella sotto `releases/`: per tornare
-indietro basta prendere l'installatore da li' ed eseguirlo.
+La versione corrente sta nella radice ed e' sempre quella da
+installare. Le precedenti scendono sotto `releases/`, una cartella per
+numero: per tornare indietro basta prendere l'installatore da li' ed
+eseguirlo. Cosi' dello stesso file non esiste mai una seconda copia da
+tenere allineata.
 
 ## Requisiti
 
