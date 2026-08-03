@@ -49,10 +49,12 @@ riavviarlo c'e' il suo pulsante nella console.
 | File | Ruolo |
 |---|---|
 | `Setup-AeraControl.exe` | L'installatore: un file solo, non richiede altro |
-| `AeraControl.exe` | La console |
-| `AeraTray.exe` | Il segnalatore di stato |
-| `src/*.cs` | I sorgenti |
 | `releases/` | Una cartella per versione, con il suo installatore |
+| `src/*.cs` | I sorgenti |
+
+L'installatore si porta dentro gia' compilati sia la console
+(`AeraControl.exe`) sia il segnalatore (`AeraTray.exe`): non c'e'
+nient'altro da scaricare.
 
 ## Versioni
 

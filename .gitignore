@@ -23,6 +23,14 @@ spia-palmari.ps1
 # vanno pubblicate.
 *.ini
 
+# Questa cartella e' anche quella in cui l'applicazione gira, quindi qui
+# sul disco i due eseguibili ci devono essere: sono quelli che partono.
+# Nel repository no, perche' Setup-AeraControl.exe se li porta gia'
+# dentro tutti e due. Tenerne una seconda copia significherebbe solo
+# rischiare di aggiornarne una e dimenticare l'altra.
+AeraControl.exe
+AeraTray.exe
+
 # Questa cartella e' anche quella in cui l'applicazione gira: cio' che
 # produce lavorando resta fuori dal versionamento.
 stato.txt
