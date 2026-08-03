@@ -1,0 +1,9 @@
+# I .bat devono restare CRLF: con fine-riga Unix il batch di Windows si
+# rompe, e con lui l'estrazione del codice incorporato.
+*.bat text eol=crlf
+*.cs  text eol=crlf
+*.md  text eol=crlf
+
+# Binari: nessuna conversione
+*.ico binary
+*.exe binary

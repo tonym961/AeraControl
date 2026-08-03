@@ -1,0 +1,32 @@
+# Artefatti di compilazione temporanei
+*.pdb
+*.obj
+*.tmp
+
+# File di lavoro locali
+*.bak
+*.log
+
+# Credenziali dell'applicazione (mai versionarle)
+config.dat
+
+# Appunti e attrezzi di lavoro: non fanno parte di cio' che si
+# distribuisce, perche' a installare basta Setup-AeraControl.exe.
+CONTESTO.md
+Setup-Client.bat
+Setup-Server.bat
+icona.ico
+spia-palmari.ps1
+
+# Configurazioni raccolte dai clienti per capire un problema: contengono
+# indirizzi di rete e impostazioni dei terminali di pagamento e non
+# vanno pubblicate.
+*.ini
+
+# Questa cartella e' anche quella in cui l'applicazione gira: cio' che
+# produce lavorando resta fuori dal versionamento.
+stato.txt
+sorvegliati.txt
+ultimo_avviso.txt
+ultimo_orderman.txt
+presenza/
