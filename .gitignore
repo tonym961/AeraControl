@@ -1,0 +1,54 @@
+# Artefatti di compilazione temporanei
+*.pdb
+*.obj
+*.tmp
+
+# Dove compila.cmd deposita i risultati prima che si sostituiscano
+# quelli in uso: sono gli stessi file, ricavabili dai sorgenti.
+build/
+
+# File di lavoro locali
+*.bak
+*.log
+
+# Credenziali dell'applicazione (mai versionarle)
+config.dat
+
+# Appunti e attrezzi di lavoro: non fanno parte di cio' che si
+# distribuisce, perche' a installare basta Setup-AeraControl.exe.
+#
+# Setup-Client.bat e Setup-Server.bat non esistono piu': facevano
+# compilare il codice sulla macchina del cliente, cosa che
+# l'installatore ha reso inutile, e restare in giro come copie mezze
+# aggiornate era solo un modo per confondersi.
+CONTESTO.md
+icona.ico
+attrezzi/
+
+# Gli installatori delle versioni superate restano qui sul disco, per
+# poter tornare indietro, ma non si pubblicano: online c'e' una
+# versione sola, quella buona.
+releases/
+
+# Configurazioni raccolte dai clienti per capire un problema: contengono
+# indirizzi di rete e impostazioni dei terminali di pagamento e non
+# vanno pubblicate.
+*.ini
+
+# Questa cartella e' anche quella in cui l'applicazione gira, quindi qui
+# sul disco i due eseguibili ci devono essere: sono quelli che partono.
+# Nel repository no, perche' Setup-AeraControl.exe se li porta gia'
+# dentro tutti e due. Tenerne una seconda copia significherebbe solo
+# rischiare di aggiornarne una e dimenticare l'altra.
+AeraControl.exe
+AeraTray.exe
+
+# Questa cartella e' anche quella in cui l'applicazione gira: cio' che
+# produce lavorando resta fuori dal versionamento.
+stato.txt
+sorvegliati.txt
+guardiano.txt
+guardiano.log
+ultimo_avviso.txt
+ultimo_orderman.txt
+presenza/
