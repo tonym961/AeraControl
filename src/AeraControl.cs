@@ -57,7 +57,7 @@ namespace AeraControl
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.4";
+        public const string Numero = "1.6.5";
     }
 
     // ------------------------------------------------------------------
@@ -1036,9 +1036,46 @@ namespace AeraControl
             AppInfo[] app = elenco.ToArray();
             var esiti = new Remoto.Esito[app.Length];
 
-            InParallelo(app.Length, delegate(int k) { Remoto.Ferma(app[k]); });
-            Thread.Sleep(2500);
-            InParallelo(app.Length, delegate(int k) { esiti[k] = Remoto.Avvia(app[k]); });
+            // I tempi finiscono nel registro: senza numeri veri, su
+            // "ci mette troppo" si puo' solo tirare a indovinare, e la
+            // parte lenta puo' stare tanto nella rete quanto qui.
+            var totale = Stopwatch.StartNew();
+            var giro = Stopwatch.StartNew();
+
+            // Fermare quello che e' gia' fermo costava sette secondi
+            // buoni piu' l'attesa che segue, ed e' esattamente il caso
+            // di ogni riavvio del server. Se il sincronizzatore ha
+            // guardato da poco e non ha visto niente acceso, si salta.
+            if (SicuramenteFermi(app))
+            {
+                Annota("  nessuno era acceso: salto l'arresto");
+            }
+            else
+            {
+                InParallelo(app.Length, delegate(int k)
+                {
+                    var t = Stopwatch.StartNew();
+                    Remoto.Ferma(app[k]);
+                    Annota("  arresto " + app[k].NomeTask + ": " + t.ElapsedMilliseconds + " ms");
+                });
+                Annota("  arresto di tutti: " + giro.ElapsedMilliseconds + " ms");
+
+                // Ferma() torna quando schtasks ha finito, quindi
+                // l'arresto e' gia' avvenuto: questa attesa serve solo a
+                // dare il tempo al processo di sparire davvero. Erano
+                // 2500 ms, ed era prudenza a occhio.
+                Thread.Sleep(900);
+            }
+
+            giro = Stopwatch.StartNew();
+            InParallelo(app.Length, delegate(int k)
+            {
+                var t = Stopwatch.StartNew();
+                esiti[k] = Remoto.Avvia(app[k]);
+                Annota("  avvio " + app[k].NomeTask + ": " + t.ElapsedMilliseconds + " ms");
+            });
+            Annota("  avvio di tutti: " + giro.ElapsedMilliseconds + " ms");
+            Annota("  dal comando alle finestre: " + totale.ElapsedMilliseconds + " ms");
 
             bool almenoUno = false;
             for (int i = 0; i < app.Length; i++)
@@ -1295,14 +1332,91 @@ namespace AeraControl
             Dictionary<string, StatoApp> stato =
                 Remoto.LeggiStato(app, out errore, out dettagli);
 
+            var accesi = new List<string>();
+
             for (int i = 0; i < app.Length; i++)
             {
                 bool attivo = stato.ContainsKey(app[i].NomeTask) &&
                               stato[app[i].NomeTask].InEsecuzione;
 
-                if (attivo) Segnaposto(app[i].Percorso);
+                if (attivo) { Segnaposto(app[i].Percorso); accesi.Add(app[i].NomeTask); }
                 else SpegniSegnaposto(app[i].NomeTask);
             }
+
+            // Solo se il server ha davvero risposto: una lettura fallita
+            // sembrerebbe "niente in esecuzione", e su quella bugia il
+            // pulsante Palmari salterebbe l'arresto senza riavviare
+            // niente.
+            if (errore.Length == 0) ScriviSincronia(accesi);
+        }
+
+        // Quello che il sincronizzatore ha appena visto sul server.
+        // Serve al pulsante Palmari per sapere, senza spendere un altro
+        // giro di rete, se c'e' qualcosa da fermare.
+        private static string FileSincronia
+        {
+            get
+            {
+                return Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "AeraControl\\sincronia.txt");
+            }
+        }
+
+        private static void ScriviSincronia(List<string> accesi)
+        {
+            try
+            {
+                string c = Path.GetDirectoryName(FileSincronia);
+                if (!Directory.Exists(c)) Directory.CreateDirectory(c);
+
+                var righe = new List<string>();
+                righe.Add("# cosa girava sul server all'ultima lettura");
+                righe.Add(DateTime.UtcNow.Ticks.ToString());
+                foreach (string t in accesi) righe.Add(t);
+
+                File.WriteAllLines(FileSincronia, righe.ToArray(), Encoding.UTF8);
+            }
+            catch { }
+        }
+
+        // true = si e' ragionevolmente sicuri che sul server non giri
+        // nessuno di questi, e l'arresto si puo' saltare. Nel dubbio
+        // torna false: fermare per niente costa qualche secondo,
+        // saltare l'arresto sbagliando vuol dire non riavviare, perche'
+        // le attivita' sono IgnoreNew e un avvio su una gia' in corso
+        // non fa niente.
+        private static bool SicuramenteFermi(AppInfo[] app)
+        {
+            try
+            {
+                if (!File.Exists(FileSincronia)) return false;
+
+                string[] righe = File.ReadAllLines(FileSincronia, Encoding.UTF8);
+                long q = 0;
+                var visti = new List<string>();
+
+                foreach (string r in righe)
+                {
+                    string s = r.Trim();
+                    if (s.Length == 0 || s.StartsWith("#")) continue;
+                    if (q == 0 && long.TryParse(s, out q)) continue;
+                    visti.Add(s);
+                }
+
+                if (q == 0) return false;
+
+                // Il sincronizzatore passa ogni 30 secondi: oltre il
+                // doppio, la fotografia e' troppo vecchia per fidarsi.
+                var quando = new DateTime(q, DateTimeKind.Utc);
+                if ((DateTime.UtcNow - quando).TotalSeconds > 70) return false;
+
+                for (int i = 0; i < app.Length; i++)
+                    if (visti.Contains(app[i].NomeTask)) return false;
+
+                return true;
+            }
+            catch { return false; }
         }
 
         // Resta acceso in sottofondo e ricontrolla ogni mezzo minuto,
