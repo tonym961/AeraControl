@@ -33,7 +33,7 @@ param(
 # solo nella cartella di lavoro, fuori dal controllo di versione, e
 # nessuno se ne accorgeva. Ora sta in src/ e la compilazione controlla
 # anche lui.
-$VersioneServer = "1.6.9"
+$VersioneServer = "1.6.10"
 
 # Utente proprietario delle attivita' pianificate.
 # Le finestre compaiono nella sessione di QUESTO utente: deve essere
@@ -406,67 +406,53 @@ catch {
 }
 
 #--------------------------------------------------------------------
-# 4b. NOTIFICHE: NON DISTURBARE PERPETUO
+# 4b. AVVISI DI WINDOWS: SI RIMETTONO COM'ERANO
 #--------------------------------------------------------------------
-# Gli avvisi di Windows compaiono in primo piano sopra le finestre dei
-# palmari, proprio sul monitor che deve restare leggibile.
+# Le versioni 1.6.8 e 1.6.9 spegnevano gli avvisi per non farli
+# comparire sopra le finestre dei palmari. Era una cura peggiore del
+# male: DisableNotificationCenter non toglie solo gli avvisi, porta
+# via anche il riquadro delle impostazioni rapide - quello con i
+# toggle di rete, volume e compagnia - e su un server che si usa anche
+# a mano quella roba serve.
 #
-# La prima versione scriveva questi valori in HKLM e non faceva
-# niente: sono criteri PER UTENTE, e Windows li legge sotto HKCU. Qui
-# si scrivono nel ramo dell'utente che tiene la sessione, caricandone
-# il profilo se non e' connesso in questo momento.
-#
-# L'interruttore "Non disturbare" delle Impostazioni non si tocca: il
-# suo stato sta in una struttura binaria non documentata, e scriverci
-# dentro a caso e' un modo per rompere le notifiche invece che
-# spegnerle. Spegnere i banner ottiene la stessa cosa dove conta:
-# niente compare sopra le finestre.
+# Qui non si spegne piu' niente. Si tolgono i valori che quelle due
+# versioni avevano scritto, cosi' rieseguendo l'installazione una
+# macchina gia' trattata torna come prima da sola, senza doverci
+# mettere le mani.
 
 Scrivi-Titolo "Avvisi di Windows"
 
-# Questi due bastano a non far comparire piu' niente, e si scrivono
-# con i diritti dell'utente normale.
-$AvvisiEssenziali = @(
-    @{ Chiave = "Software\Microsoft\Windows\CurrentVersion\PushNotifications"
-       Nome   = "ToastEnabled";                   Valore = 0 },
-    @{ Chiave = "Software\Microsoft\Windows\CurrentVersion\Notifications\Settings"
-       Nome   = "NOC_GLOBAL_SETTING_TOASTS_ENABLED"; Valore = 0 }
-)
-
-# Questi due sono criteri: piu' solidi, perche' l'utente non puo'
-# riaccenderli dalle Impostazioni, ma il ramo Software\Policies e'
-# protetto e senza privilegi elevati da' "accesso negato". Si provano
-# in piu', e se non passano non e' un guasto.
-$AvvisiCriteri = @(
+$DaTogliere = @(
     @{ Chiave = "Software\Policies\Microsoft\Windows\CurrentVersion\PushNotifications"
-       Nome   = "NoToastApplicationNotification"; Valore = 1 },
+       Nome   = "NoToastApplicationNotification" },
     @{ Chiave = "Software\Policies\Microsoft\Windows\Explorer"
-       Nome   = "DisableNotificationCenter";      Valore = 1 }
+       Nome   = "DisableNotificationCenter" },
+    @{ Chiave = "Software\Microsoft\Windows\CurrentVersion\PushNotifications"
+       Nome   = "ToastEnabled" },
+    @{ Chiave = "Software\Microsoft\Windows\CurrentVersion\Notifications\Settings"
+       Nome   = "NOC_GLOBAL_SETTING_TOASTS_ENABLED" }
 )
 
-function Spegni-Avvisi($radice, $valori) {
-    $fatti = 0
+function Togli-Avvisi($radice, $valori) {
+    $tolti = 0
     foreach ($v in $valori) {
         $p = Join-Path $radice $v.Chiave
         try {
-            if (-not (Test-Path $p)) {
-                New-Item -Path $p -Force -ErrorAction Stop | Out-Null
-            }
-            New-ItemProperty -Path $p -Name $v.Nome -Value $v.Valore `
-                             -PropertyType DWord -Force -ErrorAction Stop | Out-Null
-
-            # Riletto: scrivere senza errore non vuol dire che sia
-            # finito dove serve, ed e' l'errore che abbiamo gia' fatto
-            # una volta scrivendo in HKLM valori che Windows cerca in
-            # HKCU.
-            $letto = (Get-ItemProperty -Path $p -Name $v.Nome -ErrorAction Stop).($v.Nome)
-            if ($letto -eq $v.Valore) { $fatti++ }
+            if (-not (Test-Path $p)) { continue }
+            $c = Get-ItemProperty -Path $p -Name $v.Nome -ErrorAction SilentlyContinue
+            if ($null -eq $c) { continue }
+            Remove-ItemProperty -Path $p -Name $v.Nome -Force -ErrorAction Stop
+            $tolti++
         }
-        catch { }
+        catch { Scrivi-Avviso ($v.Nome + ": non rimosso, " + $_.Exception.Message) }
     }
-    return $fatti
+    return $tolti
 }
 
+$tolti = 0
+
+# Nel ramo dell'utente delle attivita', montandone il profilo se non
+# e' connesso: e' li' che la 1.6.9 aveva scritto.
 try {
     $sid = (New-Object Security.Principal.NTAccount($Utente)).Translate(
                [Security.Principal.SecurityIdentifier]).Value
@@ -475,64 +461,43 @@ try {
     $radice   = "Registry::HKEY_USERS\$sid"
 
     if (-not (Test-Path $radice)) {
-        # Utente non connesso: il suo ramo non c'e' in memoria e va
-        # montato dal file del profilo, altrimenti si scriverebbe nel
-        # vuoto senza accorgersene.
         $nome = $Utente.Split('\')[-1]
         $dat  = Join-Path $env:SystemDrive "Users\$nome\NTUSER.DAT"
-
         if (Test-Path $dat) {
             reg load "HKU\AeraTemp" "$dat" 2>&1 | Out-Null
             if ($LASTEXITCODE -eq 0) {
                 $radice = "Registry::HKEY_USERS\AeraTemp"
                 $caricato = $true
-                Scrivi-Info "Profilo di $nome caricato per la modifica"
             }
-            else { Scrivi-Avviso "Profilo di $nome non caricabile (forse e' in uso)" }
         }
-        else { Scrivi-Avviso "Profilo di $nome non trovato in $dat" }
     }
 
-    $fatti   = Spegni-Avvisi $radice $AvvisiEssenziali
-    $criteri = Spegni-Avvisi $radice $AvvisiCriteri
+    if (Test-Path $radice) { $tolti += Togli-Avvisi $radice $DaTogliere }
 
     if ($caricato) {
         [GC]::Collect()
         Start-Sleep -Milliseconds 500
         reg unload "HKU\AeraTemp" 2>&1 | Out-Null
     }
-
-    if ($fatti -eq $AvvisiEssenziali.Count) {
-        Scrivi-Ok "Avvisi spenti per $Utente"
-        if ($criteri -eq $AvvisiCriteri.Count) {
-            Scrivi-Ok "Impostato anche per criterio: non si riaccende dalle Impostazioni"
-        }
-        else {
-            Scrivi-Info "Senza criterio: resta spento, ma si puo' riaccendere a mano."
-        }
-        Scrivi-Info "Se $Utente e' connesso adesso, si vede dal suo prossimo accesso."
-    }
-    else {
-        Scrivi-Errore "Avvisi NON spenti: $fatti valori su $($AvvisiEssenziali.Count)"
-        Scrivi-Info "Compariranno sopra le finestre dei palmari."
-    }
-}
-catch {
-    Scrivi-Errore "Avvisi non spenti: $($_.Exception.Message)"
-}
-
-# Anche per chi sta installando, se e' un altro utente: cosi' l'effetto
-# si vede su questa sessione e non solo su quella di destinazione.
-try {
-    if ($identita.Name -ne $Utente) {
-        $n = Spegni-Avvisi "Registry::HKEY_CURRENT_USER" $AvvisiEssenziali
-        Spegni-Avvisi "Registry::HKEY_CURRENT_USER" $AvvisiCriteri | Out-Null
-        if ($n -eq $AvvisiEssenziali.Count) {
-            Scrivi-Ok ("Avvisi spenti anche per " + $identita.Name)
-        }
-    }
 }
 catch { }
+
+# Nel ramo di chi sta installando
+try { $tolti += Togli-Avvisi "Registry::HKEY_CURRENT_USER" $DaTogliere } catch { }
+
+# E in HKLM, dove la 1.6.8 li aveva messi per sbaglio: li' non
+# servivano a niente, ma DisableNotificationCenter su alcune versioni
+# di Windows viene letto anche come criterio di macchina, ed e' il
+# sospettato numero uno per i toggle spariti.
+try { $tolti += Togli-Avvisi "Registry::HKEY_LOCAL_MACHINE" $DaTogliere } catch { }
+
+if ($tolti -gt 0) {
+    Scrivi-Ok "Rimessi come prima: tolti $tolti valori lasciati dalle versioni 1.6.8 e 1.6.9"
+    Scrivi-Info "Il riquadro delle impostazioni rapide torna al prossimo accesso."
+}
+else {
+    Scrivi-Info "Niente da rimettere a posto: non erano mai stati toccati."
+}
 
 #--------------------------------------------------------------------
 # 5. ACCOUNT ADMINISTRATOR
