@@ -33,7 +33,7 @@ param(
 # solo nella cartella di lavoro, fuori dal controllo di versione, e
 # nessuno se ne accorgeva. Ora sta in src/ e la compilazione controlla
 # anche lui.
-$VersioneServer = "1.6.7"
+$VersioneServer = "1.6.8"
 
 # Utente proprietario delle attivita' pianificate.
 # Le finestre compaiono nella sessione di QUESTO utente: deve essere
@@ -321,6 +321,138 @@ catch {
         Scrivi-Avviso "Gruppo 'Gestione remota attivita' pianificate' non trovato"
         Scrivi-Info "Abilitarlo a mano: Windows Defender Firewall > App consentite"
     }
+}
+
+# Spegnimento completo su tutti i profili. Senza, i palmari non si
+# comandano: le regole aperte qui sopra non bastano su tutte le
+# configurazioni, e il sintomo e' un comando che resta appeso fino al
+# timeout invece di dare errore.
+#
+# Le regole restano registrate: riaccendendo il firewall tornano
+# valide, senza dover rifare l'installazione.
+Scrivi-Titolo "Firewall: spegnimento su tutti i profili"
+
+try {
+    Set-NetFirewallProfile -Profile Domain,Private,Public -Enabled False -ErrorAction Stop
+}
+catch {
+    # Ripiego dove il modulo NetSecurity non risponde: netsh c'e' sempre
+    try { netsh advfirewall set allprofiles state off | Out-Null }
+    catch { Scrivi-Errore "Comando di spegnimento fallito: $($_.Exception.Message)" }
+}
+
+# Non basta averlo comandato: si controlla che sia successo davvero,
+# profilo per profilo. Un firewall che si riaccende da criterio di
+# dominio darebbe palmari che non partono e nessuna spiegazione.
+try {
+    $profili = Get-NetFirewallProfile -ErrorAction Stop
+    $accesi = @($profili | Where-Object { $_.Enabled })
+
+    foreach ($p in $profili) {
+        if ($p.Enabled) { Scrivi-Errore ("profilo " + $p.Name + ": ANCORA ACCESO") }
+        else            { Scrivi-Ok     ("profilo " + $p.Name + ": spento") }
+    }
+
+    if ($accesi.Count -gt 0) {
+        Scrivi-Avviso "Il firewall non e' rimasto spento."
+        Scrivi-Info "Di solito e' un criterio di gruppo che lo riaccende."
+        Scrivi-Info "Senza, dal client i comandi restano appesi fino al timeout."
+    }
+}
+catch {
+    Scrivi-Avviso "Stato del firewall non verificabile: $($_.Exception.Message)"
+}
+
+# Spegnerlo una volta non basta: un criterio di dominio, un
+# aggiornamento o una mano distratta lo riaccendono, e da quel momento
+# i palmari non si comandano piu' senza che nessuno capisca perche'.
+#
+# Ci pensa Windows stesso, con un'attivita' che gira come SYSTEM
+# all'avvio e poi ogni cinque minuti. Il segnalatore non potrebbe:
+# gira senza privilegi elevati, e il firewall non lo tocca.
+try {
+    $azFw = New-ScheduledTaskAction -Execute "netsh.exe" `
+                                    -Argument "advfirewall set allprofiles state off"
+
+    $trAvvio = New-ScheduledTaskTrigger -AtStartup
+
+    $trOgni = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
+                  -RepetitionInterval (New-TimeSpan -Minutes 5) `
+                  -RepetitionDuration ([TimeSpan]::MaxValue)
+
+    $prFw = New-ScheduledTaskPrincipal -UserId "SYSTEM" `
+                                       -LogonType ServiceAccount `
+                                       -RunLevel Highest
+
+    $imFw = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 5) `
+                                         -MultipleInstances IgnoreNew `
+                                         -AllowStartIfOnBatteries `
+                                         -DontStopIfGoingOnBatteries `
+                                         -StartWhenAvailable
+
+    Register-ScheduledTask -TaskName "Aera_Firewall" `
+                           -Action    $azFw `
+                           -Trigger   $trAvvio, $trOgni `
+                           -Principal $prFw `
+                           -Settings  $imFw `
+                           -Description "Tiene spento il firewall - AeraControl" `
+                           -Force | Out-Null
+
+    Scrivi-Ok "Sorveglianza attiva: se si riaccende viene rispento entro 5 minuti"
+}
+catch {
+    Scrivi-Avviso "Sorveglianza del firewall non creata: $($_.Exception.Message)"
+    Scrivi-Info "Se qualcuno riaccende il firewall, i palmari smetteranno di partire."
+}
+
+#--------------------------------------------------------------------
+# 4b. NOTIFICHE: NON DISTURBARE PERPETUO
+#--------------------------------------------------------------------
+# Gli avvisi di Windows compaiono in primo piano sopra le finestre dei
+# palmari, proprio sul monitor che deve restare leggibile. Si spengono
+# per criterio, che vale per tutti gli utenti e non si riattiva da
+# solo al prossimo accesso.
+
+Scrivi-Titolo "Notifiche di Windows"
+
+try {
+    $chiavi = @(
+        @{ Percorso = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications"
+           Nome     = "NoToastApplicationNotification"; Valore = 1 },
+        @{ Percorso = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer"
+           Nome     = "DisableNotificationCenter";      Valore = 1 }
+    )
+
+    foreach ($k in $chiavi) {
+        if (-not (Test-Path $k.Percorso)) { New-Item -Path $k.Percorso -Force | Out-Null }
+        New-ItemProperty -Path $k.Percorso -Name $k.Nome -Value $k.Valore `
+                         -PropertyType DWord -Force | Out-Null
+    }
+    Scrivi-Ok "Avvisi disattivati per criterio, per tutti gli utenti"
+
+    # Anche nel profilo dell'utente che tiene la sessione aperta: il
+    # criterio vale dal prossimo accesso, questo vale subito.
+    try {
+        $sid = (New-Object Security.Principal.NTAccount($Utente)).Translate(
+                   [Security.Principal.SecurityIdentifier]).Value
+
+        $suo = "Registry::HKEY_USERS\$sid\SOFTWARE\Microsoft\Windows\CurrentVersion\PushNotifications"
+        if (Test-Path "Registry::HKEY_USERS\$sid") {
+            if (-not (Test-Path $suo)) { New-Item -Path $suo -Force | Out-Null }
+            New-ItemProperty -Path $suo -Name "ToastEnabled" -Value 0 `
+                             -PropertyType DWord -Force | Out-Null
+            Scrivi-Ok "Non disturbare attivo subito per $Utente"
+        }
+        else {
+            Scrivi-Info "$Utente non ha una sessione aperta: varra' dal suo accesso."
+        }
+    }
+    catch {
+        Scrivi-Info "Profilo di $Utente non raggiungibile: varra' dal suo accesso."
+    }
+}
+catch {
+    Scrivi-Avviso "Notifiche non disattivate: $($_.Exception.Message)"
 }
 
 #--------------------------------------------------------------------

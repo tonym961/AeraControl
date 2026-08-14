@@ -21,6 +21,13 @@ riscrive tutto.
   di procedere chiede l'utente proprietario delle attivita', quello
   nella cui sessione compariranno le finestre, e se aprire il
   segnalatore a ogni accesso.
+
+  Spegne inoltre il **firewall su tutti i profili**, che serve perche' i
+  palmari si comandino, e disattiva gli **avvisi di Windows**, che
+  comparirebbero sopra le finestre dei palmari. Il firewall non basta
+  spegnerlo una volta: un'attivita' pianificata lo ricontrolla ogni
+  cinque minuti e lo rispegne se qualcosa lo riaccende. Le regole
+  aperte restano registrate, quindi riaccendendolo tornano valide.
 - **Client** — installa la console e crea i collegamenti. Poi si preme
   *Configura* e si indicano server, utente e password.
 
@@ -50,6 +57,11 @@ Se un applicativo non riparte, dopo tre tentativi il guardiano smette e
 riprova un quarto d'ora dopo, invece di rilanciarlo all'infinito. Cio'
 che si ferma con il pulsante *Ferma* resta fermo: e' una scelta, non un
 guasto. Di quello che fa resta traccia in `guardiano.log`.
+
+Sorveglia anche il firewall e lo dice nel dettaglio: acceso, i palmari
+non si comandano piu' e non si capirebbe perche'. Se lo trova acceso
+chiede all'attivita' `Aera_Firewall` di rispegnerlo, perche' il
+segnalatore gira senza privilegi elevati e da solo non potrebbe.
 
 Perche' funzioni, il segnalatore deve aprirsi da solo all'accesso a
 Windows, con l'autologon sul server. Un servizio di Windows non

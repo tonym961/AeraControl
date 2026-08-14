@@ -43,7 +43,7 @@ namespace AeraTray
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.7";
+        public const string Numero = "1.6.8";
     }
 
     public class Applicativo
@@ -217,9 +217,10 @@ namespace AeraTray
         private CambiaSorv cambiaSorv;
         private CheckBox[] chkSorv;
         private Comando manda;
-        private LeggiAvvio leggiAvvio, leggiGuardiano;
+        private LeggiAvvio leggiAvvio, leggiGuardiano, leggiFirewall;
         private CambiaAvvio cambiaAvvio, cambiaGuardiano;
         private CheckBox chkAvvio, chkGuardiano;
+        private Label lblFirewall;
         private bool sistemando = false;
 
         private const int Largo = 430;
@@ -227,8 +228,10 @@ namespace AeraTray
 
         public FormDettaglio(Applicativo[] elenco, Comando comando, Icon iconaFinestra,
                              LeggiAvvio leggi, CambiaAvvio cambia, CambiaSorv sorveglia,
-                             LeggiAvvio leggiGuard, CambiaAvvio cambiaGuard)
+                             LeggiAvvio leggiGuard, CambiaAvvio cambiaGuard,
+                             LeggiAvvio leggiFw)
         {
+            leggiFirewall = leggiFw;
             applicativi = elenco;
             manda = comando;
             leggiAvvio = leggi;
@@ -248,8 +251,8 @@ namespace AeraTray
 
             int n = applicativi.Length;
             // ultima voce: 20 per la riga in calce, 26 per la seconda
-            // casella di spunta
-            ClientSize = new Size(Largo, 16 + n * AltRiga + 82 + 20 + 26);
+            // casella di spunta, 22 per la riga del firewall
+            ClientSize = new Size(Largo, 16 + n * AltRiga + 82 + 20 + 26 + 22);
 
             lblStato = new Label[n];
             btnAzione = new PulsanteTondo[n];
@@ -356,7 +359,17 @@ namespace AeraTray
             };
             Controls.Add(chkGuardiano);
 
-            int yPiede = yAvvio + 56;
+            // Il firewall acceso non si vede da nessun'altra parte, e
+            // spiega da solo un server che non risponde piu'.
+            lblFirewall = new Label();
+            lblFirewall.Location = new Point(16, yAvvio + 50);
+            lblFirewall.Size = new Size(Largo - 32, 18);
+            lblFirewall.Font = new Font("Segoe UI", 8.5F);
+            lblFirewall.ForeColor = Stile.TestoTenue;
+            lblFirewall.BackColor = Color.Transparent;
+            Controls.Add(lblFirewall);
+
+            int yPiede = yAvvio + 78;
 
             var bTutti = new PulsanteTondo(Stile.Verde);
             bTutti.Text = "Avvia tutti";
@@ -475,6 +488,15 @@ namespace AeraTray
                     chkAvvio.Checked = leggiAvvio();
                 if (chkGuardiano != null && leggiGuardiano != null)
                     chkGuardiano.Checked = leggiGuardiano();
+
+                if (lblFirewall != null && leggiFirewall != null)
+                {
+                    bool acceso = leggiFirewall();
+                    lblFirewall.Text = acceso
+                        ? "Firewall acceso: i palmari non si comandano finche' resta cosi'"
+                        : "Firewall spento, come deve essere";
+                    lblFirewall.ForeColor = acceso ? Stile.Rosso : Stile.TestoTenue;
+                }
             }
             catch { }
             sistemando = false;
@@ -482,6 +504,10 @@ namespace AeraTray
 
         public void Aggiorna()
         {
+            // Anche la riga del firewall e le spunte: cambiano da
+            // sole, non solo quando le si tocca.
+            LeggiSpunta();
+
             for (int i = 0; i < applicativi.Length; i++)
             {
                 bool attivo;
@@ -605,6 +631,107 @@ namespace AeraTray
         private const string ChiaveRun = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string NomeRun   = "AeraTray";
         private const string TaskAvvio = "Aera_Segnalatore";
+
+        // ---- firewall ----------------------------------------------
+        // Se si riaccende, dal client i comandi restano appesi fino al
+        // timeout e i palmari non partono piu'. Va visto e rimesso a
+        // posto. Spegnerlo da qui non si puo': il segnalatore gira
+        // senza privilegi elevati. Si chiede all'attivita'
+        // Aera_Firewall, che gira come SYSTEM ed e' fatta apposta.
+        private const string TaskFirewall = "Aera_Firewall";
+        private int giriFirewall;
+        private bool firewallAcceso;
+
+        public bool FirewallAcceso { get { return firewallAcceso; } }
+
+        // Letto dal registro invece che da netsh: e' immediato, non
+        // apre processi ogni volta, e non dipende dalla lingua di
+        // Windows. Il criterio, se c'e', vince sull'impostazione.
+        private static bool LeggiFirewallAcceso()
+        {
+            string[] profili = new string[] { "DomainProfile", "StandardProfile", "PublicProfile" };
+
+            foreach (string p in profili)
+            {
+                int? v = ValoreFirewall(
+                    @"SOFTWARE\Policies\Microsoft\WindowsFirewall\" + p);
+                if (v == null)
+                    v = ValoreFirewall(
+                        @"SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\" + p);
+
+                // Valore assente = acceso, che e' il predefinito di Windows
+                if (v == null || v.Value != 0) return true;
+            }
+            return false;
+        }
+
+        private static int? ValoreFirewall(string chiave)
+        {
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(chiave, false))
+                {
+                    if (k == null) return null;
+                    object v = k.GetValue("EnableFirewall");
+                    if (v == null) return null;
+                    return Convert.ToInt32(v);
+                }
+            }
+            catch { return null; }
+        }
+
+        // Un giro ogni cinque secondi: il firewall si guarda una volta
+        // al minuto, non serve di piu' e la lettura resta gratuita.
+        private void ControllaFirewall()
+        {
+            if (giriFirewall-- > 0) return;
+            giriFirewall = 12;
+
+            bool acceso = LeggiFirewallAcceso();
+            bool prima = firewallAcceso;
+            firewallAcceso = acceso;
+
+            if (!acceso)
+            {
+                if (prima) Annota("firewall di nuovo spento");
+                return;
+            }
+
+            Annota("firewall acceso: i palmari non si comandano, chiedo di rispegnerlo");
+
+            var t = new Thread(delegate()
+            {
+                try
+                {
+                    var psi = new ProcessStartInfo("schtasks.exe",
+                                  "/run /tn \"" + TaskFirewall + "\"");
+                    psi.UseShellExecute = false;
+                    psi.CreateNoWindow = true;
+                    psi.RedirectStandardOutput = true;
+                    psi.RedirectStandardError = true;
+                    using (Process p = Process.Start(psi))
+                    {
+                        p.StandardOutput.ReadToEnd();
+                        string err = p.StandardError.ReadToEnd();
+                        if (!p.WaitForExit(15000)) { try { p.Kill(); } catch { } }
+                        else if (p.ExitCode != 0)
+                            Annota("  non sono riuscito a chiederlo: " + err.Trim());
+                    }
+                }
+                catch (Exception ex) { Annota("  non sono riuscito a chiederlo: " + ex.Message); }
+
+                // Se l'attivita' non c'e' o non ha potuto, entro cinque
+                // minuti ci prova comunque lei da sola: qui si guarda
+                // solo se ha funzionato.
+                Thread.Sleep(6000);
+                bool ora = LeggiFirewallAcceso();
+                firewallAcceso = ora;
+                Annota(ora ? "  e' ancora acceso" : "  rispento");
+                Invoca(delegate { AggiornaDettaglio(); });
+            });
+            t.IsBackground = true;
+            t.Start();
+        }
 
         // L'avvio automatico puo' arrivare da due strade: l'attivita'
         // pianificata creata dall'installatore, che pero' per
@@ -1097,7 +1224,8 @@ namespace AeraTray
                         delegate { CambiaAvvioAutomatico(); },
                         delegate(string task, bool su) { CambiaSorveglianza(task, su); },
                         delegate { return GuardianoAttivo(); },
-                        delegate { CambiaGuardiano(); });
+                        delegate { CambiaGuardiano(); },
+                        delegate { return FirewallAcceso; });
                 }
 
                 if (dettaglio.Visible) { dettaglio.Hide(); return; }
@@ -1194,6 +1322,7 @@ namespace AeraTray
                 icona.ShowBalloonTip(8000);
             }
 
+            ControllaFirewall();
             Guardiano();
         }
 
