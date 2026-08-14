@@ -43,7 +43,7 @@ namespace AeraTray
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.8";
+        public const string Numero = "1.6.9";
     }
 
     public class Applicativo

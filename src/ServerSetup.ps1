@@ -33,7 +33,7 @@ param(
 # solo nella cartella di lavoro, fuori dal controllo di versione, e
 # nessuno se ne accorgeva. Ora sta in src/ e la compilazione controlla
 # anche lui.
-$VersioneServer = "1.6.8"
+$VersioneServer = "1.6.9"
 
 # Utente proprietario delle attivita' pianificate.
 # Le finestre compaiono nella sessione di QUESTO utente: deve essere
@@ -409,51 +409,130 @@ catch {
 # 4b. NOTIFICHE: NON DISTURBARE PERPETUO
 #--------------------------------------------------------------------
 # Gli avvisi di Windows compaiono in primo piano sopra le finestre dei
-# palmari, proprio sul monitor che deve restare leggibile. Si spengono
-# per criterio, che vale per tutti gli utenti e non si riattiva da
-# solo al prossimo accesso.
+# palmari, proprio sul monitor che deve restare leggibile.
+#
+# La prima versione scriveva questi valori in HKLM e non faceva
+# niente: sono criteri PER UTENTE, e Windows li legge sotto HKCU. Qui
+# si scrivono nel ramo dell'utente che tiene la sessione, caricandone
+# il profilo se non e' connesso in questo momento.
+#
+# L'interruttore "Non disturbare" delle Impostazioni non si tocca: il
+# suo stato sta in una struttura binaria non documentata, e scriverci
+# dentro a caso e' un modo per rompere le notifiche invece che
+# spegnerle. Spegnere i banner ottiene la stessa cosa dove conta:
+# niente compare sopra le finestre.
 
-Scrivi-Titolo "Notifiche di Windows"
+Scrivi-Titolo "Avvisi di Windows"
+
+# Questi due bastano a non far comparire piu' niente, e si scrivono
+# con i diritti dell'utente normale.
+$AvvisiEssenziali = @(
+    @{ Chiave = "Software\Microsoft\Windows\CurrentVersion\PushNotifications"
+       Nome   = "ToastEnabled";                   Valore = 0 },
+    @{ Chiave = "Software\Microsoft\Windows\CurrentVersion\Notifications\Settings"
+       Nome   = "NOC_GLOBAL_SETTING_TOASTS_ENABLED"; Valore = 0 }
+)
+
+# Questi due sono criteri: piu' solidi, perche' l'utente non puo'
+# riaccenderli dalle Impostazioni, ma il ramo Software\Policies e'
+# protetto e senza privilegi elevati da' "accesso negato". Si provano
+# in piu', e se non passano non e' un guasto.
+$AvvisiCriteri = @(
+    @{ Chiave = "Software\Policies\Microsoft\Windows\CurrentVersion\PushNotifications"
+       Nome   = "NoToastApplicationNotification"; Valore = 1 },
+    @{ Chiave = "Software\Policies\Microsoft\Windows\Explorer"
+       Nome   = "DisableNotificationCenter";      Valore = 1 }
+)
+
+function Spegni-Avvisi($radice, $valori) {
+    $fatti = 0
+    foreach ($v in $valori) {
+        $p = Join-Path $radice $v.Chiave
+        try {
+            if (-not (Test-Path $p)) {
+                New-Item -Path $p -Force -ErrorAction Stop | Out-Null
+            }
+            New-ItemProperty -Path $p -Name $v.Nome -Value $v.Valore `
+                             -PropertyType DWord -Force -ErrorAction Stop | Out-Null
+
+            # Riletto: scrivere senza errore non vuol dire che sia
+            # finito dove serve, ed e' l'errore che abbiamo gia' fatto
+            # una volta scrivendo in HKLM valori che Windows cerca in
+            # HKCU.
+            $letto = (Get-ItemProperty -Path $p -Name $v.Nome -ErrorAction Stop).($v.Nome)
+            if ($letto -eq $v.Valore) { $fatti++ }
+        }
+        catch { }
+    }
+    return $fatti
+}
 
 try {
-    $chiavi = @(
-        @{ Percorso = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications"
-           Nome     = "NoToastApplicationNotification"; Valore = 1 },
-        @{ Percorso = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer"
-           Nome     = "DisableNotificationCenter";      Valore = 1 }
-    )
+    $sid = (New-Object Security.Principal.NTAccount($Utente)).Translate(
+               [Security.Principal.SecurityIdentifier]).Value
 
-    foreach ($k in $chiavi) {
-        if (-not (Test-Path $k.Percorso)) { New-Item -Path $k.Percorso -Force | Out-Null }
-        New-ItemProperty -Path $k.Percorso -Name $k.Nome -Value $k.Valore `
-                         -PropertyType DWord -Force | Out-Null
+    $caricato = $false
+    $radice   = "Registry::HKEY_USERS\$sid"
+
+    if (-not (Test-Path $radice)) {
+        # Utente non connesso: il suo ramo non c'e' in memoria e va
+        # montato dal file del profilo, altrimenti si scriverebbe nel
+        # vuoto senza accorgersene.
+        $nome = $Utente.Split('\')[-1]
+        $dat  = Join-Path $env:SystemDrive "Users\$nome\NTUSER.DAT"
+
+        if (Test-Path $dat) {
+            reg load "HKU\AeraTemp" "$dat" 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                $radice = "Registry::HKEY_USERS\AeraTemp"
+                $caricato = $true
+                Scrivi-Info "Profilo di $nome caricato per la modifica"
+            }
+            else { Scrivi-Avviso "Profilo di $nome non caricabile (forse e' in uso)" }
+        }
+        else { Scrivi-Avviso "Profilo di $nome non trovato in $dat" }
     }
-    Scrivi-Ok "Avvisi disattivati per criterio, per tutti gli utenti"
 
-    # Anche nel profilo dell'utente che tiene la sessione aperta: il
-    # criterio vale dal prossimo accesso, questo vale subito.
-    try {
-        $sid = (New-Object Security.Principal.NTAccount($Utente)).Translate(
-                   [Security.Principal.SecurityIdentifier]).Value
+    $fatti   = Spegni-Avvisi $radice $AvvisiEssenziali
+    $criteri = Spegni-Avvisi $radice $AvvisiCriteri
 
-        $suo = "Registry::HKEY_USERS\$sid\SOFTWARE\Microsoft\Windows\CurrentVersion\PushNotifications"
-        if (Test-Path "Registry::HKEY_USERS\$sid") {
-            if (-not (Test-Path $suo)) { New-Item -Path $suo -Force | Out-Null }
-            New-ItemProperty -Path $suo -Name "ToastEnabled" -Value 0 `
-                             -PropertyType DWord -Force | Out-Null
-            Scrivi-Ok "Non disturbare attivo subito per $Utente"
+    if ($caricato) {
+        [GC]::Collect()
+        Start-Sleep -Milliseconds 500
+        reg unload "HKU\AeraTemp" 2>&1 | Out-Null
+    }
+
+    if ($fatti -eq $AvvisiEssenziali.Count) {
+        Scrivi-Ok "Avvisi spenti per $Utente"
+        if ($criteri -eq $AvvisiCriteri.Count) {
+            Scrivi-Ok "Impostato anche per criterio: non si riaccende dalle Impostazioni"
         }
         else {
-            Scrivi-Info "$Utente non ha una sessione aperta: varra' dal suo accesso."
+            Scrivi-Info "Senza criterio: resta spento, ma si puo' riaccendere a mano."
         }
+        Scrivi-Info "Se $Utente e' connesso adesso, si vede dal suo prossimo accesso."
     }
-    catch {
-        Scrivi-Info "Profilo di $Utente non raggiungibile: varra' dal suo accesso."
+    else {
+        Scrivi-Errore "Avvisi NON spenti: $fatti valori su $($AvvisiEssenziali.Count)"
+        Scrivi-Info "Compariranno sopra le finestre dei palmari."
     }
 }
 catch {
-    Scrivi-Avviso "Notifiche non disattivate: $($_.Exception.Message)"
+    Scrivi-Errore "Avvisi non spenti: $($_.Exception.Message)"
 }
+
+# Anche per chi sta installando, se e' un altro utente: cosi' l'effetto
+# si vede su questa sessione e non solo su quella di destinazione.
+try {
+    if ($identita.Name -ne $Utente) {
+        $n = Spegni-Avvisi "Registry::HKEY_CURRENT_USER" $AvvisiEssenziali
+        Spegni-Avvisi "Registry::HKEY_CURRENT_USER" $AvvisiCriteri | Out-Null
+        if ($n -eq $AvvisiEssenziali.Count) {
+            Scrivi-Ok ("Avvisi spenti anche per " + $identita.Name)
+        }
+    }
+}
+catch { }
 
 #--------------------------------------------------------------------
 # 5. ACCOUNT ADMINISTRATOR
