@@ -57,7 +57,7 @@ namespace AeraControl
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.5";
+        public const string Numero = "1.6.6";
     }
 
     // ------------------------------------------------------------------
@@ -127,6 +127,13 @@ namespace AeraControl
         public static bool AvvioApplicativi = false;
         public static List<string> DaAvviare = new List<string>();
 
+        // Se il pulsante Palmari debba anche riavviare il proxy
+        // Orderman quando lo trova gia' acceso. Spento di serie:
+        // fermarlo stacca i palmari che ci stanno lavorando sopra, e
+        // quasi sempre non e' quello che si vuole. Chi ha bisogno che
+        // riparta insieme agli altri lo accende.
+        public static bool RiavviaProxyOrderman = false;
+
         // Rispondendo No alla proposta di installazione la domanda non
         // va piu' riproposta a ogni avvio.
         public static bool NienteInstallazione = false;
@@ -170,6 +177,7 @@ namespace AeraControl
 
                 AvvioConWindows = false;
                 AvvioApplicativi = false;
+                RiavviaProxyOrderman = false;
                 DaAvviare = new List<string>();
 
                 for (int i = 3; i < righe.Length; i++)
@@ -187,6 +195,8 @@ namespace AeraControl
                         AvvioApplicativi = (valore == "1");
                     else if (string.Equals(chiave, "nienteInstallazione", StringComparison.OrdinalIgnoreCase))
                         NienteInstallazione = (valore == "1");
+                    else if (string.Equals(chiave, "riavviaProxyOrderman", StringComparison.OrdinalIgnoreCase))
+                        RiavviaProxyOrderman = (valore == "1");
                     else if (string.Equals(chiave, "daAvviare", StringComparison.OrdinalIgnoreCase))
                     {
                         foreach (string t in valore.Split(','))
@@ -218,6 +228,7 @@ namespace AeraControl
             righe.Add("avvioConWindows=" + (AvvioConWindows ? "1" : "0"));
             righe.Add("avvioApplicativi=" + (AvvioApplicativi ? "1" : "0"));
             righe.Add("nienteInstallazione=" + (NienteInstallazione ? "1" : "0"));
+            righe.Add("riavviaProxyOrderman=" + (RiavviaProxyOrderman ? "1" : "0"));
             righe.Add("daAvviare=" + string.Join(",", DaAvviare.ToArray()));
 
             File.WriteAllLines(FileConfig, righe.ToArray(), Encoding.UTF8);
@@ -1298,16 +1309,24 @@ namespace AeraControl
                                     @"C:\Program Files\Orderman\ClassicProxy\ClassicProxyService.exe",
                                     true);
 
-            if (attivo)
+            if (attivo && !Config.RiavviaProxyOrderman)
             {
-                // Fermarlo staccherebbe i palmari collegati: chi preme
-                // Palmari vuole riavviare gli applicativi, non buttare
-                // giu' i dispositivi.
+                // Fermarlo stacca i palmari collegati, percio' di norma
+                // si lascia dov'e'. Chi ha bisogno che riparta insieme
+                // agli altri accende la spunta nella configurazione.
                 Annota("  proxy Orderman gia' attivo: lo lascio dov'e'");
                 return;
             }
 
-            Annota("  avvio del proxy Orderman, per ultimo");
+            if (attivo)
+            {
+                Annota("  proxy Orderman gia' attivo: lo riavvio, come da impostazioni");
+                Remoto.Esito f = Remoto.Ferma(proxy);
+                Annota(f.Ok ? "    fermato" : ("    arresto FALLITO: " + f.Messaggio));
+                Thread.Sleep(4000);
+            }
+            else Annota("  avvio del proxy Orderman, per ultimo");
+
             Remoto.Esito e = Remoto.Avvia(proxy);
             Annota(e.Ok ? "    riuscito" : ("    FALLITO: " + e.Messaggio));
         }
@@ -2264,7 +2283,7 @@ namespace AeraControl
         private TextBox txtServer, txtUtente, txtPassword;
         private Label lblEsito;
         private PulsanteTondo btnProva;
-        private CheckBox chkConWindows, chkApplicativi, chkPalmari;
+        private CheckBox chkConWindows, chkApplicativi, chkPalmari, chkProxy;
         private CheckedListBox elencoApp;
         private AppInfo[] applicativi;
         private bool palmariPrima;
@@ -2382,7 +2401,7 @@ namespace AeraControl
 
             var riquadro3 = new Riquadro();
             riquadro3.Location = new Point(20, yPalmari + 24);
-            riquadro3.Size = new Size(Largo - 40, 76);
+            riquadro3.Size = new Size(Largo - 40, 140);
             Controls.Add(riquadro3);
 
             chkPalmari = new CheckBox();
@@ -2403,6 +2422,30 @@ namespace AeraControl
             nota3.ForeColor = Stile.TestoTenue;
             nota3.Font = new Font("Segoe UI", 8F);
             riquadro3.Controls.Add(nota3);
+
+            var riga = new Panel();
+            riga.Location = new Point(16, 74);
+            riga.Size = new Size(Largo - 72, 1);
+            riga.BackColor = Stile.Bordo;
+            riquadro3.Controls.Add(riga);
+
+            chkProxy = new CheckBox();
+            chkProxy.Text = "Riavvia anche il proxy Orderman, se lo trova gia' acceso";
+            chkProxy.Location = new Point(16, 84);
+            chkProxy.Size = new Size(420, 20);
+            chkProxy.ForeColor = Stile.Testo;
+            chkProxy.BackColor = Color.Transparent;
+            chkProxy.Checked = Config.RiavviaProxyOrderman;
+            riquadro3.Controls.Add(chkProxy);
+
+            var nota4 = new Label();
+            nota4.Text = "Fermarlo stacca i palmari collegati, percio' di norma resta\n" +
+                         "acceso dov'e'. Se e' spento viene avviato in ogni caso.";
+            nota4.Location = new Point(34, 106);
+            nota4.Size = new Size(Largo - 80, 30);
+            nota4.ForeColor = Stile.TestoTenue;
+            nota4.Font = new Font("Segoe UI", 8F);
+            riquadro3.Controls.Add(nota4);
 
             // ---- esito e pulsanti ----------------------------------
             int yEsito = riquadro3.Bottom + 10;
@@ -2538,6 +2581,7 @@ namespace AeraControl
 
             Config.AvvioConWindows = chkConWindows.Checked;
             Config.AvvioApplicativi = chkApplicativi.Checked;
+            Config.RiavviaProxyOrderman = chkProxy.Checked;
             Config.DaAvviare.Clear();
             for (int i = 0; i < applicativi.Length && i < elencoApp.Items.Count; i++)
                 if (elencoApp.GetItemChecked(i)) Config.DaAvviare.Add(applicativi[i].NomeTask);
@@ -2565,10 +2609,16 @@ namespace AeraControl
                         // server non risponde.
                         string guaio = ApplicaLocali();
 
+                        // Si salva comunque, anche se il server non ha
+                        // risposto: le impostazioni sono di questa
+                        // macchina e il messaggio qui sotto promette
+                        // che restano applicate. Prima si salvava solo
+                        // riuscendo, e chi aveva il server spento
+                        // perdeva quello che aveva appena scelto.
+                        Config.Salva();
+
                         if (esito.Ok)
                         {
-                            Config.Salva();
-
                             if (guaio.Length > 0)
                             {
                                 lblEsito.ForeColor = Color.Firebrick;

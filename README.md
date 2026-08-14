@@ -64,9 +64,11 @@ server. Da attivare solo sui client, mai sul server.
 Riavvia sempre l'intero gruppo scelto in configurazione, non solo gli
 applicativi che AeraRestaurant chiede.
 
-Il proxy Orderman, se installato sul server, viene acceso per ultimo ma
-non viene mai riavviato: fermarlo staccherebbe i palmari collegati. Per
-riavviarlo c'e' il suo pulsante nella console.
+Il proxy Orderman, se installato sul server, viene acceso per ultimo
+quando lo trova spento. Se invece e' gia' acceso di norma lo lascia
+stare, perche' fermarlo stacca i palmari collegati; chi ha bisogno che
+riparta insieme agli altri accende *Riavvia anche il proxy Orderman*
+nella *Configurazione*.
 
 ## File
 
