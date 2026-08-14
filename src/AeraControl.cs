@@ -57,7 +57,7 @@ namespace AeraControl
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.6";
+        public const string Numero = "1.6.7";
     }
 
     // ------------------------------------------------------------------
@@ -2488,11 +2488,14 @@ namespace AeraControl
             elencoApp.BackColor = attivo ? Color.White : Color.FromArgb(247, 248, 250);
         }
 
+        // Niente maiuscolo: si legge peggio e grida senza motivo. Le
+        // intestazioni si distinguono gia' per il grassetto e per il
+        // colore piu' tenue, come nell'installatore.
         private Label Titoletto(string testo, int x, int y)
         {
             var l = new Label();
-            l.Text = testo.ToUpperInvariant();
-            l.Font = new Font("Segoe UI", 8F, FontStyle.Bold);
+            l.Text = testo;
+            l.Font = new Font("Segoe UI", 8.5F, FontStyle.Bold);
             l.ForeColor = Stile.TestoTenue;
             l.Location = new Point(x + 2, y);
             l.Size = new Size(320, 18);
@@ -3368,7 +3371,7 @@ namespace AeraControl
                     else
                     {
                         connesso = false;
-                        Log("Connessione FALLITA: " + esito.Messaggio);
+                        Log("Connessione fallita: " + esito.Messaggio);
                         StatoConnessione(false, "non connesso");
                     }
                 });
@@ -3407,7 +3410,7 @@ namespace AeraControl
                 return;
             }
 
-            SulThreadUI(delegate { Log("--- AVVIO AUTOMATICO ---"); });
+            SulThreadUI(delegate { Log("--- avvio automatico ---"); });
 
             foreach (int i in daFare)
             {
@@ -3551,7 +3554,7 @@ namespace AeraControl
 
             InBackground(delegate
             {
-                SulThreadUI(delegate { Log("--- " + azione.ToUpper() + " TUTTI ---"); });
+                SulThreadUI(delegate { Log("--- " + azione + " tutti ---"); });
 
                 if (azione == "riavvia" || azione == "ferma")
                 {

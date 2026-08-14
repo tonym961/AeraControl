@@ -34,7 +34,7 @@ namespace SetupAera
     // AeraTray.cs. La nota estesa sta in AeraControl.cs.
     public static class Versione
     {
-        public const string Numero = "1.6.6";
+        public const string Numero = "1.6.7";
     }
 
     // ------------------------------------------------------------------
@@ -845,7 +845,7 @@ namespace SetupAera
                 Comandi(false);
                 Aggiorna();
                 ApriRegistro(true);
-                Log("NON SI PUO' INSTALLARE: mancano i privilegi di");
+                Log("Non si puo' installare: mancano i privilegi di");
                 Log("amministratore, e servono per scrivere nel registro,");
                 Log("creare le attivita' pianificate e aprire il firewall.");
                 Log("");
@@ -934,7 +934,7 @@ namespace SetupAera
         private void InstallaClient()
         {
             Log("");
-            Log("=== INSTALLAZIONE CLIENT ===");
+            Log("--- installazione client ---");
 
             if (!Amministratore)
             {
@@ -1047,7 +1047,7 @@ namespace SetupAera
         private void InstallaServer()
         {
             Log("");
-            Log("=== INSTALLAZIONE SERVER ===");
+            Log("--- installazione server ---");
 
             if (!Amministratore)
             {
@@ -1134,7 +1134,7 @@ namespace SetupAera
         private void Rimuovi()
         {
             Log("");
-            Log("=== RIMOZIONE ===");
+            Log("--- rimozione ---");
 
             if (!Amministratore)
             {
