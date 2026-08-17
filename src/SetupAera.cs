@@ -34,7 +34,7 @@ namespace SetupAera
     // AeraTray.cs. La nota estesa sta in AeraControl.cs.
     public static class Versione
     {
-        public const string Numero = "1.6.11";
+        public const string Numero = "1.6.12";
     }
 
     // ------------------------------------------------------------------
@@ -957,6 +957,7 @@ namespace SetupAera
                 Log("[OK] icona");
 
             Collegamenti();
+            CopiaInstallatore();
             VoceDisinstalla();
             PuliziaVecchie();
 
@@ -1003,6 +1004,40 @@ namespace SetupAera
             tc.InvokeMember("Description", set, null, c,
                             new object[] { "Avvio e controllo degli applicativi Aera" });
             tc.InvokeMember("Save", BindingFlags.InvokeMethod, null, c, null);
+        }
+
+        // L'installatore si mette nella cartella insieme a tutto il
+        // resto.
+        //
+        // Serviva per due motivi, e nessuno dei due era coperto. La
+        // voce in App e funzionalita' qui sotto indica proprio questo
+        // percorso per la disinstallazione: se il file non c'e', quel
+        // pulsante non fa niente. E chi rilancia l'installazione da
+        // qui - che e' la cosa naturale, visto che e' la cartella del
+        // programma - si ritrovava la copia lasciata dall'installazione
+        // precedente, cioe' una versione vecchia, mentre credeva di
+        // usare quella nuova appena portata sulla macchina.
+        private void CopiaInstallatore()
+        {
+            try
+            {
+                string mio = Application.ExecutablePath;
+                string qui = Path.Combine(Cartella, "Setup-AeraControl.exe");
+
+                if (string.Equals(mio, qui, StringComparison.OrdinalIgnoreCase))
+                {
+                    Log("[OK] installatore gia' al suo posto");
+                    return;
+                }
+
+                File.Copy(mio, qui, true);
+                Log("[OK] installatore " + Versione.Numero + " copiato in " + Cartella);
+            }
+            catch (Exception ex)
+            {
+                Log("[!]  installatore non copiato: " + ex.Message);
+                Log("     la disinstallazione da App e funzionalita' non funzionera'.");
+            }
         }
 
         private void VoceDisinstalla()
@@ -1076,6 +1111,8 @@ namespace SetupAera
             if (Risorse.Scrivi("AeraControl.exe", Path.Combine(Cartella, "AeraControl.exe"), out guaio))
                 Log("[OK] console installata");
 
+            CopiaInstallatore();
+            VoceDisinstalla();
             PuliziaVecchie();
 
             Log("");
