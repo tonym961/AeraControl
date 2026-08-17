@@ -43,7 +43,7 @@ namespace AeraTray
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.10";
+        public const string Numero = "1.6.11";
     }
 
     public class Applicativo
@@ -1089,6 +1089,11 @@ namespace AeraTray
             // sistemare, poi si guarda che cosa manca davvero.
             if ((DateTime.UtcNow - acceso).TotalSeconds < AttesaIniziale) return;
 
+            // Chi e' stato fermato apposta dal client non va riacceso:
+            // senza questo, premere Ferma dalla console non serviva a
+            // niente, perche' qui si vedeva solo un applicativo fermo.
+            List<string> dalClient = FermatiDalClient();
+
             var mancanti = new List<int>();
             for (int i = 0; i < applicativi.Length; i++)
             {
@@ -1096,6 +1101,12 @@ namespace AeraTray
                 if (!applicativi[i].Installato) continue;
                 if (fermatoAMano[i]) continue;
                 if (attivoPrima[i]) continue;
+
+                bool voluto = false;
+                foreach (string quale in dalClient)
+                    if (string.Equals(quale, applicativi[i].Task, StringComparison.OrdinalIgnoreCase))
+                        voluto = true;
+                if (voluto) continue;
 
                 double da = (DateTime.UtcNow - ultimoTentativo[i]).TotalSeconds;
                 double pausa = (tentativiFalliti[i] >= TentativiMax)
@@ -1169,6 +1180,28 @@ namespace AeraTray
             });
             t.IsBackground = true;
             t.Start();
+        }
+
+        // Scritto dal client quando si preme Ferma sulla console: qui
+        // non arriva nessun altro segnale che distingua una fermata
+        // voluta da un applicativo caduto.
+        private static List<string> FermatiDalClient()
+        {
+            var elenco = new List<string>();
+            try
+            {
+                string f = Path.Combine(
+                    Path.GetDirectoryName(Application.ExecutablePath), "fermati.txt");
+                if (!File.Exists(f)) return elenco;
+
+                foreach (string r in File.ReadAllLines(f, Encoding.UTF8))
+                {
+                    string s = r.Trim();
+                    if (s.Length > 0 && !s.StartsWith("#")) elenco.Add(s);
+                }
+            }
+            catch { }
+            return elenco;
         }
 
         // Un'attivita' pianificata non e' istantanea: si concede il

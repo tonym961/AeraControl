@@ -57,7 +57,7 @@ namespace AeraControl
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.10";
+        public const string Numero = "1.6.11";
     }
 
     // ------------------------------------------------------------------
@@ -2051,16 +2051,83 @@ namespace AeraControl
                           TimeoutNormale);
         }
 
-        // schtasks /end termina l'istanza in corso: piu' affidabile di
-        // taskkill, che va per forza di RPC/DCOM.
+        // Si ferma il PROCESSO, non l'istanza dell'attivita'.
+        //
+        // schtasks /end termina solo cio' che ha avviato l'attivita'
+        // stessa. Se l'applicativo e' partito in un altro modo - dal
+        // proprio avvio automatico, da un collegamento, a mano - per
+        // l'attivita' non c'e' niente da terminare: /end riusciva
+        // senza fermare niente, il pulsante Ferma sembrava ignorato, e
+        // l'avvio successivo faceva partire una SECONDA copia. Da li'
+        // "Socket Error 10048, address already in use" di Aera Service
+        // e "una istanza e' gia' attiva" di Restaurant Pocket SOL.
+        //
+        // taskkill sull'immagine chiude qualunque copia, comunque sia
+        // nata, e con essa l'eventuale istanza dell'attivita'.
         public static Esito Ferma(AppInfo app)
         {
             if (app.EServizio) return Servizio("stop", app.Servizio);
 
+            string immagine = "";
+            try { immagine = Path.GetFileName(app.Percorso); }
+            catch { }
+
+            if (immagine.Length > 0)
+            {
+                Esito e = Esegui("taskkill.exe",
+                                 string.Format("/s {0}{1} /f /im \"{2}\"",
+                                               Config.Server, Credenziali(), immagine),
+                                 TimeoutNormale);
+
+                // 128 = nessun processo con quel nome: non e' un guasto,
+                // vuol dire che era gia' fermo.
+                if (e.Ok || e.Codice == 128) return e;
+            }
+
+            // Ripiego: se taskkill non e' utilizzabile resta la vecchia
+            // strada, che almeno chiude cio' che l'attivita' ha avviato.
             return Esegui("schtasks.exe",
                           string.Format("/end /s {0}{1} /tn \"{2}\"",
                                         Config.Server, Credenziali(), app.NomeTask),
                           TimeoutNormale);
+        }
+
+        // Segna sul server che quell'applicativo e' stato fermato
+        // apposta da qui, cosi' il guardiano lo lascia stare invece di
+        // riaccenderlo dopo pochi secondi.
+        //
+        // Si scrive accanto a stato.txt, sulla sessione di rete gia'
+        // aperta: nessuna chiamata in piu' verso il server, quindi
+        // nessun rallentamento del pulsante Palmari.
+        public static void SegnaFermatoAMano(string nomeTask, bool fermo)
+        {
+            try
+            {
+                string f = "\\\\" + Config.Server + "\\C$\\iotatau\\AeraControl\\fermati.txt";
+
+                var righe = new List<string>();
+                try
+                {
+                    if (File.Exists(f))
+                        foreach (string r in File.ReadAllLines(f, Encoding.UTF8))
+                        {
+                            string s = r.Trim();
+                            if (s.Length > 0 && !s.StartsWith("#") &&
+                                !string.Equals(s, nomeTask, StringComparison.OrdinalIgnoreCase))
+                                righe.Add(s);
+                        }
+                }
+                catch { }
+
+                if (fermo) righe.Add(nomeTask);
+
+                var fuori = new List<string>();
+                fuori.Add("# fermati apposta dal client: il guardiano non li riaccende");
+                fuori.AddRange(righe);
+
+                File.WriteAllLines(f, fuori.ToArray(), Encoding.UTF8);
+            }
+            catch { }
         }
 
         // I servizi di Windows si comandano con sc, che non prende
@@ -3601,9 +3668,15 @@ namespace AeraControl
                 // Se qui c'e' un segnaposto acceso per la spia di
                 // AeraRestaurant, va spento insieme all'applicativo.
                 Palmari.SpegniSegnaposto(app.NomeTask);
+
+                // Il guardiano sul server vede solo un applicativo
+                // fermo e lo riaccende: senza questo segno, premere
+                // Ferma da qui non serviva a niente.
+                Remoto.SegnaFermatoAMano(app.NomeTask, true);
             }
             else if (tipo == "riavvia")
             {
+                Remoto.SegnaFermatoAMano(app.NomeTask, false);
                 Remoto.Ferma(app);
                 // Un servizio ci mette di piu' a chiudersi davvero, e
                 // riavviarlo troppo presto fallisce.
@@ -3613,6 +3686,7 @@ namespace AeraControl
             }
             else
             {
+                Remoto.SegnaFermatoAMano(app.NomeTask, false);
                 esito = Remoto.Avvia(app);
                 verbo = "Avvio";
             }

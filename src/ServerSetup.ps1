@@ -33,7 +33,7 @@ param(
 # solo nella cartella di lavoro, fuori dal controllo di versione, e
 # nessuno se ne accorgeva. Ora sta in src/ e la compilazione controlla
 # anche lui.
-$VersioneServer = "1.6.10"
+$VersioneServer = "1.6.11"
 
 # Utente proprietario delle attivita' pianificate.
 # Le finestre compaiono nella sessione di QUESTO utente: deve essere
@@ -165,6 +165,7 @@ Write-Host "   Utente : $Utente" -ForegroundColor Gray
 Scrivi-Titolo "Attivita' pianificate"
 
 $mancanti = @()
+$rifatti  = @()
 
 foreach ($app in $Applicativi) {
 
@@ -196,18 +197,81 @@ foreach ($app in $Applicativi) {
                             -DontStopIfGoingOnBatteries `
                             -StartWhenAvailable
 
-        Register-ScheduledTask -TaskName  $app.Task `
-                               -Action    $azione `
-                               -Principal $principal `
-                               -Settings  $impostazioni `
-                               -Description "Avvio remoto - AeraControl" `
-                               -Force | Out-Null
+        # Un'attivita' che esiste gia' ED E' IN ESECUZIONE Windows non
+        # la lascia sostituire, nemmeno con -Force: fallisce solo per
+        # gli applicativi accesi in quel momento, e su un server dove
+        # i palmari stanno lavorando sono quasi tutti.
+        #
+        # Si prova prima senza disturbare niente. Solo se rifiuta si
+        # ferma l'attivita', si toglie e si rifa: l'applicativo si
+        # chiude, ma lo rimette su il guardiano o il pulsante Palmari.
+        try {
+            Register-ScheduledTask -TaskName  $app.Task `
+                                   -Action    $azione `
+                                   -Principal $principal `
+                                   -Settings  $impostazioni `
+                                   -Description "Avvio remoto - AeraControl" `
+                                   -Force -ErrorAction Stop | Out-Null
 
-        Scrivi-Ok $app.Task
+            Scrivi-Ok $app.Task
+        }
+        catch {
+            $primoGuaio = $_.Exception.Message
+
+            $cera = $null
+            try { $cera = Get-ScheduledTask -TaskName $app.Task -ErrorAction SilentlyContinue }
+            catch { }
+
+            if ($null -eq $cera) {
+                # Non esisteva: il rifiuto e' un problema vero
+                Scrivi-Errore "$($app.Task): $primoGuaio"
+            }
+            else {
+                Scrivi-Info "$($app.Task) e' in uso: la fermo e la rifaccio"
+
+                try { Stop-ScheduledTask -TaskName $app.Task -ErrorAction SilentlyContinue } catch { }
+                Start-Sleep -Milliseconds 800
+
+                # Se il processo resta su malgrado l'arresto, tiene
+                # occupata l'attivita' e la sostituzione fallisce di
+                # nuovo: si chiude anche quello.
+                try {
+                    Get-Process -Name $app.Processo -ErrorAction SilentlyContinue |
+                        ForEach-Object { try { $_.Kill() } catch { } }
+                }
+                catch { }
+                Start-Sleep -Milliseconds 800
+
+                try { Unregister-ScheduledTask -TaskName $app.Task -Confirm:$false -ErrorAction Stop }
+                catch { }
+
+                try {
+                    Register-ScheduledTask -TaskName  $app.Task `
+                                           -Action    $azione `
+                                           -Principal $principal `
+                                           -Settings  $impostazioni `
+                                           -Description "Avvio remoto - AeraControl" `
+                                           -Force -ErrorAction Stop | Out-Null
+
+                    Scrivi-Ok "$($app.Task) (rifatta dopo averla fermata)"
+                    $rifatti += $app.Titolo
+                }
+                catch {
+                    Scrivi-Errore "$($app.Task): $($_.Exception.Message)"
+                    Scrivi-Info "Al primo tentativo: $primoGuaio"
+                }
+            }
+        }
     }
     catch {
         Scrivi-Errore "$($app.Task): $($_.Exception.Message)"
     }
+}
+
+if ($rifatti.Count -gt 0) {
+    Write-Host ""
+    Scrivi-Avviso "Fermati per poter rifare l'attivita': $($rifatti -join ', ')"
+    Scrivi-Info "Ripartono da soli col guardiano, o premendo Palmari."
 }
 
 if ($mancanti.Count -gt 0) {

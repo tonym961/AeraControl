@@ -47,6 +47,7 @@ AeraTray.exe
 # produce lavorando resta fuori dal versionamento.
 stato.txt
 sorvegliati.txt
+fermati.txt
 guardiano.txt
 guardiano.log
 ultimo_avviso.txt
