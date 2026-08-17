@@ -17,6 +17,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
 using System.Threading;
@@ -34,7 +35,7 @@ namespace SetupAera
     // AeraTray.cs. La nota estesa sta in AeraControl.cs.
     public static class Versione
     {
-        public const string Numero = "1.6.12";
+        public const string Numero = "1.6.13";
     }
 
     // ------------------------------------------------------------------
@@ -416,6 +417,184 @@ namespace SetupAera
     }
 
     // ------------------------------------------------------------------
+    // Accesso automatico a Windows
+    // ------------------------------------------------------------------
+    // Senza un utente sempre connesso in console le finestre degli
+    // applicativi non compaiono sul monitor del server: l'autologon
+    // non e' un vezzo, e' il presupposto di tutto l'impianto.
+    //
+    // La password NON finisce nel registro. Il modo che si trova
+    // ovunque - scrivere DefaultPassword sotto Winlogon - la lascia in
+    // chiaro, leggibile da chiunque abbia accesso alla macchina. Qui
+    // si usa il deposito segreti di LSA, lo stesso posto che usa
+    // l'Autologon di Sysinternals, dove Winlogon la va a cercare da
+    // solo se nel registro non la trova.
+    public static class Autologon
+    {
+        [StructLayout(LayoutKind.Sequential)]
+        private struct LSA_UNICODE_STRING
+        {
+            public ushort Length;
+            public ushort MaximumLength;
+            public IntPtr Buffer;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct LSA_OBJECT_ATTRIBUTES
+        {
+            public int Length;
+            public IntPtr RootDirectory;
+            public IntPtr ObjectName;
+            public int Attributes;
+            public IntPtr SecurityDescriptor;
+            public IntPtr SecurityQualityOfService;
+        }
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern uint LsaOpenPolicy(IntPtr nomeSistema,
+                                                 ref LSA_OBJECT_ATTRIBUTES attributi,
+                                                 uint accessoRichiesto,
+                                                 out IntPtr criterio);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern uint LsaStorePrivateData(IntPtr criterio,
+                                                       ref LSA_UNICODE_STRING chiave,
+                                                       ref LSA_UNICODE_STRING dati);
+
+        [DllImport("advapi32.dll")]
+        private static extern uint LsaClose(IntPtr criterio);
+
+        [DllImport("advapi32.dll")]
+        private static extern int LsaNtStatusToWinError(uint stato);
+
+        private const uint PolicyCreaSegreto = 0x00000020;
+        private const uint PolicyTutto       = 0x000F0FFF;
+
+        private static LSA_UNICODE_STRING Stringa(string s)
+        {
+            var u = new LSA_UNICODE_STRING();
+            u.Buffer = Marshal.StringToHGlobalUni(s);
+            u.Length = (ushort)(s.Length * 2);
+            u.MaximumLength = (ushort)((s.Length + 1) * 2);
+            return u;
+        }
+
+        // Chiave separata dal resto per poterla provare senza toccare
+        // l'accesso automatico della macchina.
+        public static bool DepositaSegreto(string chiave, string valore, out string guaio)
+        {
+            guaio = "";
+            IntPtr criterio = IntPtr.Zero;
+            var attributi = new LSA_OBJECT_ATTRIBUTES();
+            attributi.Length = Marshal.SizeOf(typeof(LSA_OBJECT_ATTRIBUTES));
+
+            uint stato = LsaOpenPolicy(IntPtr.Zero, ref attributi, PolicyCreaSegreto, out criterio);
+            if (stato != 0)
+                stato = LsaOpenPolicy(IntPtr.Zero, ref attributi, PolicyTutto, out criterio);
+
+            if (stato != 0)
+            {
+                guaio = "LSA non accessibile, errore " + LsaNtStatusToWinError(stato);
+                return false;
+            }
+
+            LSA_UNICODE_STRING nome = Stringa(chiave);
+            LSA_UNICODE_STRING dati = Stringa(valore);
+
+            try
+            {
+                stato = LsaStorePrivateData(criterio, ref nome, ref dati);
+                if (stato != 0)
+                {
+                    guaio = "deposito rifiutato, errore " + LsaNtStatusToWinError(stato);
+                    return false;
+                }
+                return true;
+            }
+            finally
+            {
+                // La password non deve restare in memoria un istante
+                // piu' del necessario
+                if (dati.Buffer != IntPtr.Zero)
+                {
+                    for (int i = 0; i < dati.MaximumLength; i++)
+                        Marshal.WriteByte(dati.Buffer, i, 0);
+                    Marshal.FreeHGlobal(dati.Buffer);
+                }
+                if (nome.Buffer != IntPtr.Zero) Marshal.FreeHGlobal(nome.Buffer);
+                if (criterio != IntPtr.Zero) LsaClose(criterio);
+            }
+        }
+
+        private const string ChiaveWinlogon =
+            @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon";
+
+        public static bool Configura(string utenteCompleto, string password, out string guaio)
+        {
+            guaio = "";
+
+            string dominio = Environment.MachineName;
+            string utente = utenteCompleto;
+            int barra = utenteCompleto.IndexOf('\\');
+            if (barra > 0)
+            {
+                dominio = utenteCompleto.Substring(0, barra);
+                utente = utenteCompleto.Substring(barra + 1);
+            }
+
+            if (!DepositaSegreto("DefaultPassword", password, out guaio)) return false;
+
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(ChiaveWinlogon, true))
+                {
+                    if (k == null) { guaio = "chiave Winlogon non apribile"; return false; }
+
+                    k.SetValue("AutoAdminLogon", "1", Microsoft.Win32.RegistryValueKind.String);
+                    k.SetValue("DefaultUserName", utente, Microsoft.Win32.RegistryValueKind.String);
+                    k.SetValue("DefaultDomainName", dominio, Microsoft.Win32.RegistryValueKind.String);
+
+                    // Se una configurazione precedente l'aveva lasciata
+                    // in chiaro, va tolta: adesso sta nel deposito
+                    // segreti e quella riga sarebbe solo una password
+                    // esposta per niente.
+                    if (k.GetValue("DefaultPassword") != null)
+                        k.DeleteValue("DefaultPassword", false);
+
+                    // Un eventuale conteggio residuo farebbe scadere
+                    // l'autologon dopo pochi accessi.
+                    if (k.GetValue("AutoLogonCount") != null)
+                        k.DeleteValue("AutoLogonCount", false);
+                }
+                return true;
+            }
+            catch (Exception ex) { guaio = ex.Message; return false; }
+        }
+
+        // Come risulta adesso, senza toccare niente.
+        public static string Stato(out bool acceso, out bool passwordInChiaro)
+        {
+            acceso = false;
+            passwordInChiaro = false;
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(ChiaveWinlogon, false))
+                {
+                    if (k == null) return "";
+                    acceso = string.Equals(Convert.ToString(k.GetValue("AutoAdminLogon")), "1");
+                    passwordInChiaro = (k.GetValue("DefaultPassword") != null);
+
+                    string d = Convert.ToString(k.GetValue("DefaultDomainName"));
+                    string u = Convert.ToString(k.GetValue("DefaultUserName"));
+                    if (string.IsNullOrEmpty(u)) return "";
+                    return string.IsNullOrEmpty(d) ? u : (d + "\\" + u);
+                }
+            }
+            catch { return ""; }
+        }
+    }
+
+    // ------------------------------------------------------------------
     // Contenuto incorporato
     // ------------------------------------------------------------------
     public static class Risorse
@@ -467,6 +646,12 @@ namespace SetupAera
         // silenzio, senza aprire una seconda finestra nera.
         private TextBox txtUtente;
         private CheckBox chkSegnalatore;
+
+        // L'accesso automatico e' il presupposto di tutto: senza un
+        // utente connesso in console le finestre non compaiono.
+        private CheckBox chkAutologon;
+        private TextBox txtPassword;
+        private Label lblAutologon;
 
         private int ruolo;              // 0 nessuno, 1 server, 2 client
         private bool registroAperto;
@@ -604,6 +789,45 @@ namespace SetupAera
             chkSegnalatore.Size = new Size(400, 22);
             opzioni.Controls.Add(chkSegnalatore);
 
+            chkAutologon = new CheckBox();
+            chkAutologon.Text = "Accedi automaticamente a Windows con questo utente";
+            chkAutologon.Font = new Font("Segoe UI", 9F);
+            chkAutologon.ForeColor = Stile.Testo;
+            chkAutologon.BackColor = Color.Transparent;
+            chkAutologon.Location = new Point(12, 90);
+            chkAutologon.Size = new Size(400, 22);
+            chkAutologon.CheckedChanged += delegate
+            {
+                txtPassword.Enabled = chkAutologon.Checked;
+                if (chkAutologon.Checked) txtPassword.Focus();
+            };
+            opzioni.Controls.Add(chkAutologon);
+
+            var etPwd = new Label();
+            etPwd.Text = "Password";
+            etPwd.Font = new Font("Segoe UI", 8.5F);
+            etPwd.ForeColor = Stile.TestoTenue;
+            etPwd.BackColor = Color.Transparent;
+            etPwd.Location = new Point(34, 118);
+            etPwd.Size = new Size(70, 18);
+            opzioni.Controls.Add(etPwd);
+
+            txtPassword = new TextBox();
+            txtPassword.UseSystemPasswordChar = true;
+            txtPassword.Font = new Font("Segoe UI", 9F);
+            txtPassword.Location = new Point(104, 115);
+            txtPassword.Size = new Size(200, 24);
+            txtPassword.Enabled = false;
+            opzioni.Controls.Add(txtPassword);
+
+            lblAutologon = new Label();
+            lblAutologon.Font = new Font("Segoe UI", 8F);
+            lblAutologon.ForeColor = Stile.TestoTenue;
+            lblAutologon.BackColor = Color.Transparent;
+            lblAutologon.Location = new Point(312, 119);
+            lblAutologon.Size = new Size(260, 30);
+            opzioni.Controls.Add(lblAutologon);
+
             barra = new BarraRegistro();
             barra.Text = "Registro";
             barra.Font = new Font("Segoe UI", 8.5F);
@@ -700,6 +924,33 @@ namespace SetupAera
 
         private string utenteScelto = "";
         private bool segnalatoreScelto = true;
+        private string passwordScelta = "";
+        private bool autologonScelto = false;
+
+        // Che cosa c'e' gia' configurato: se l'accesso automatico e'
+        // gia' a posto non serve richiedere la password, e se qualcuno
+        // l'aveva lasciata in chiaro nel registro va detto.
+        private void MostraStatoAutologon()
+        {
+            try
+            {
+                bool acceso, inChiaro;
+                string chi = Autologon.Stato(out acceso, out inChiaro);
+
+                if (acceso && chi.Length > 0)
+                {
+                    lblAutologon.Text = "gia' attivo per " + chi +
+                        (inChiaro ? "\ncon la password in chiaro nel registro" : "");
+                    lblAutologon.ForeColor = inChiaro ? Stile.Rosso : Stile.Verde;
+                }
+                else
+                {
+                    lblAutologon.Text = "non attivo: le finestre non\ncompariranno sul monitor";
+                    lblAutologon.ForeColor = Stile.TestoTenue;
+                }
+            }
+            catch { }
+        }
 
         private void Installa()
         {
@@ -709,6 +960,16 @@ namespace SetupAera
             // il lavoro vero gira altrove e da li' non si toccano.
             utenteScelto = txtUtente.Text.Trim();
             segnalatoreScelto = chkSegnalatore.Checked;
+            autologonScelto = chkAutologon.Checked;
+            passwordScelta = txtPassword.Text;
+
+            if (autologonScelto && passwordScelta.Length == 0)
+            {
+                ApriRegistro(true);
+                Log("Per l'accesso automatico serve la password di " + utenteScelto + ".");
+                Log("Scriverla nel campo qui sopra, oppure togliere la spunta.");
+                return;
+            }
 
             ApriRegistro(true);
             if (ruolo == 1) InBackground(InstallaServer);
@@ -784,8 +1045,9 @@ namespace SetupAera
             if (opzioni.Visible)
             {
                 opzioni.Location = new Point(20, y);
-                opzioni.Size = new Size(Largo - 40, 96);
-                y += 96 + 10;
+                opzioni.Size = new Size(Largo - 40, 150);
+                y += 150 + 10;
+                MostraStatoAutologon();
             }
 
             barra.Location = new Point(20, y);
@@ -1114,6 +1376,37 @@ namespace SetupAera
             CopiaInstallatore();
             VoceDisinstalla();
             PuliziaVecchie();
+
+            if (autologonScelto)
+            {
+                Log("");
+                string perche;
+                // La password non passa mai da una riga di comando, che
+                // sarebbe visibile nell'elenco dei processi, e non
+                // compare in nessuna riga di questo registro.
+                if (Autologon.Configura(utenteScelto, passwordScelta, out perche))
+                {
+                    bool acceso, inChiaro;
+                    string chi = Autologon.Stato(out acceso, out inChiaro);
+
+                    if (acceso)
+                    {
+                        Log("[OK] accesso automatico per " + chi);
+                        Log("     password nel deposito segreti, non nel registro");
+                        if (inChiaro)
+                            Log("[!]  ne resta una in chiaro nel registro: da togliere");
+                    }
+                    else Log("[X] accesso automatico: scritto ma non risulta attivo");
+                }
+                else
+                {
+                    Log("[X] accesso automatico non configurato: " + perche);
+                    Log("    senza, le finestre non compariranno sul monitor.");
+                }
+
+                // Non deve restare in memoria oltre il necessario
+                passwordScelta = "";
+            }
 
             Log("");
             Log("Configurazione del server: attivita' pianificate, UAC di");
