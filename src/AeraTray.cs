@@ -43,7 +43,7 @@ namespace AeraTray
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.23";
+        public const string Numero = "1.6.24";
     }
 
     public class Applicativo
@@ -583,18 +583,13 @@ namespace AeraTray
             for (int i = 0; i < applicativi.Length; i++)
             {
                 bool attivo;
-                if (applicativi[i].EServizio) attivo = ServizioSu(applicativi[i].Servizio);
-                else
-                {
-                    Process[] q = null;
-                    try { q = Process.GetProcessesByName(applicativi[i].Processo); }
-                    catch { }
-                    attivo = (q != null && q.Length > 0);
-                }
+                // Il segnaposto porta lo stesso nome dell'applicativo:
+                // contandolo, questa finestra mostrava "in esecuzione"
+                // con il PID di una copia vuota.
+                Process p = Vassoio.ProcessoVero(applicativi[i].Processo);
 
-                Process[] p = null;
-                try { p = Process.GetProcessesByName(applicativi[i].Processo); }
-                catch { }
+                if (applicativi[i].EServizio) attivo = ServizioSu(applicativi[i].Servizio);
+                else attivo = (p != null);
 
                 sistemando = true;
                 chkSorv[i].Checked = applicativi[i].Sorvegliato;
@@ -614,12 +609,12 @@ namespace AeraTray
                 if (attivo)
                 {
                     string dett = "in esecuzione";
-                    if (p != null && p.Length > 0)
+                    if (p != null)
                     {
                         double mb = 0;
-                        try { mb = Math.Round(p[0].WorkingSet64 / 1048576.0, 1); }
+                        try { mb = Math.Round(p.WorkingSet64 / 1048576.0, 1); }
                         catch { }
-                        dett = string.Format("in esecuzione - PID {0} - {1} MB", p[0].Id, mb);
+                        dett = string.Format("in esecuzione - PID {0} - {1} MB", p.Id, mb);
                     }
 
                     lblStato[i].ForeColor = Stile.Verde;
@@ -1268,10 +1263,30 @@ namespace AeraTray
                     Path.GetDirectoryName(Application.ExecutablePath), "fermati.txt");
                 if (!File.Exists(f)) return elenco;
 
+                // Una fermata voluta vale fino al riavvio: dopo, la
+                // macchina riparte da zero e tenere fermo un
+                // applicativo per una decisione presa settimane prima
+                // vuol dire lasciarlo giu' senza che nessuno sappia
+                // perche'. Le voci senza ora sono di una versione
+                // precedente e si considerano scadute.
+                DateTime acceso = DateTime.UtcNow -
+                    TimeSpan.FromMilliseconds((uint)Environment.TickCount);
+
                 foreach (string r in File.ReadAllLines(f, Encoding.UTF8))
                 {
                     string s = r.Trim();
-                    if (s.Length > 0 && !s.StartsWith("#")) elenco.Add(s);
+                    if (s.Length == 0 || s.StartsWith("#")) continue;
+
+                    string[] c = s.Split('|');
+                    if (c.Length < 2) continue;
+
+                    long q;
+                    if (!long.TryParse(c[1].Trim(), out q)) continue;
+
+                    var quando = new DateTime(q, DateTimeKind.Utc);
+                    if (quando < acceso) continue;
+
+                    elenco.Add(c[0].Trim());
                 }
             }
             catch { }
@@ -1433,6 +1448,28 @@ namespace AeraTray
             Guardiano();
         }
 
+        // Il processo vero dell'applicativo, saltando i segnaposto
+        // della cartella presenza\. Null se non c'e'.
+        public static Process ProcessoVero(string nome)
+        {
+            try
+            {
+                foreach (Process p in Process.GetProcessesByName(nome))
+                {
+                    try
+                    {
+                        if (p.MainModule.FileName.IndexOf(@"\presenza\",
+                                StringComparison.OrdinalIgnoreCase) >= 0)
+                            continue;
+                    }
+                    catch { }
+                    return p;
+                }
+            }
+            catch { }
+            return null;
+        }
+
         // Un segnaposto non e' l'applicativo.
         //
         // Dove il pulsante Palmari e' dirottato, nella cartella
@@ -1446,26 +1483,7 @@ namespace AeraTray
         {
             if (a.EServizio) return ServizioAttivo(a.Servizio);
 
-            try
-            {
-                foreach (Process p in Process.GetProcessesByName(a.Processo))
-                {
-                    try
-                    {
-                        string dove = p.MainModule.FileName;
-                        if (dove.IndexOf(@"\presenza\", StringComparison.OrdinalIgnoreCase) >= 0)
-                            continue;
-                    }
-                    catch
-                    {
-                        // Percorso non leggibile: meglio darlo per
-                        // buono che riavviare un applicativo gia' su.
-                    }
-                    return true;
-                }
-                return false;
-            }
-            catch { return false; }
+            return ProcessoVero(a.Processo) != null;
         }
 
         // Lo stato di un servizio lo dice il gestore dei servizi: il
@@ -1521,35 +1539,34 @@ namespace AeraTray
                         // gestore; PID e memoria si prendono dal
                         // processo se c'e'.
                         bool su = ServizioAttivo(a.Servizio);
-                        Process[] ps = null;
-                        try { ps = Process.GetProcessesByName(a.Processo); }
-                        catch { }
+                        Process ps = ProcessoVero(a.Processo);
 
-                        if (su && ps != null && ps.Length > 0)
+                        if (su && ps != null)
                         {
                             double m = 0;
-                            try { m = Math.Round(ps[0].WorkingSet64 / 1048576.0, 1); }
+                            try { m = Math.Round(ps.WorkingSet64 / 1048576.0, 1); }
                             catch { }
                             sb.AppendLine(string.Format(
                                 System.Globalization.CultureInfo.InvariantCulture,
-                                "{0}|1|{1}|{2}", a.Task, ps[0].Id, m));
+                                "{0}|1|{1}|{2}", a.Task, ps.Id, m));
                         }
                         else sb.AppendLine(a.Task + (su ? "|1||" : "|0||"));
                         continue;
                     }
 
-                    Process[] p = null;
-                    try { p = Process.GetProcessesByName(a.Processo); }
-                    catch { }
+                    // Il segnaposto porta lo stesso nome ma non e'
+                    // l'applicativo: riportandolo, il client avrebbe
+                    // visto attivo cio' che e' fermo.
+                    Process p = ProcessoVero(a.Processo);
 
-                    if (p != null && p.Length > 0)
+                    if (p != null)
                     {
                         double mb = 0;
-                        try { mb = Math.Round(p[0].WorkingSet64 / 1048576.0, 1); }
+                        try { mb = Math.Round(p.WorkingSet64 / 1048576.0, 1); }
                         catch { }
                         sb.AppendLine(string.Format(
                             System.Globalization.CultureInfo.InvariantCulture,
-                            "{0}|1|{1}|{2}", a.Task, p[0].Id, mb));
+                            "{0}|1|{1}|{2}", a.Task, p.Id, mb));
                     }
                     else sb.AppendLine(a.Task + "|0||");
                 }

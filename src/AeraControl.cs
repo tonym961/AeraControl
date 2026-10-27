@@ -57,7 +57,7 @@ namespace AeraControl
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.23";
+        public const string Numero = "1.6.24";
     }
 
     // ------------------------------------------------------------------
@@ -2255,17 +2255,25 @@ namespace AeraControl
                         foreach (string r in File.ReadAllLines(f, Encoding.UTF8))
                         {
                             string s = r.Trim();
-                            if (s.Length > 0 && !s.StartsWith("#") &&
-                                !string.Equals(s, nomeTask, StringComparison.OrdinalIgnoreCase))
+                            if (s.Length == 0 || s.StartsWith("#")) continue;
+
+                            string soloNome = s.Split('|')[0].Trim();
+                            if (!string.Equals(soloNome, nomeTask,
+                                               StringComparison.OrdinalIgnoreCase))
                                 righe.Add(s);
                         }
                 }
                 catch { }
 
-                if (fermo) righe.Add(nomeTask);
+                // Con l'ora: una fermata voluta vale fino al riavvio
+                // della macchina, non per sempre. Senza, un applicativo
+                // fermato mesi fa non ripartirebbe mai piu' e nessuno
+                // capirebbe perche'.
+                if (fermo) righe.Add(nomeTask + "|" + DateTime.UtcNow.Ticks);
 
                 var fuori = new List<string>();
-                fuori.Add("# fermati apposta dal client: il guardiano non li riaccende");
+                fuori.Add("# fermati apposta dal client: il guardiano non li");
+                fuori.Add("# riaccende, fino al prossimo riavvio della macchina");
                 fuori.AddRange(righe);
 
                 File.WriteAllLines(f, fuori.ToArray(), Encoding.UTF8);
