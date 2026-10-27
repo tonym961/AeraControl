@@ -33,7 +33,7 @@ param(
 # solo nella cartella di lavoro, fuori dal controllo di versione, e
 # nessuno se ne accorgeva. Ora sta in src/ e la compilazione controlla
 # anche lui.
-$VersioneServer = "1.6.19"
+$VersioneServer = "1.6.20"
 
 # Utente proprietario delle attivita' pianificate.
 # Le finestre compaiono nella sessione di QUESTO utente: deve essere
@@ -760,6 +760,56 @@ else {
                     else {
                         Scrivi-Avviso "Segnalatore non partito: controllare l'attivita' Aera_Segnalatore"
                     }
+                }
+            }
+
+            # Seconda strada, indipendente dall'attivita' pianificata:
+            # la chiave Run dell'utente. Se l'attivita' viene
+            # disattivata o tolta, il segnalatore si apre lo stesso.
+            # Due strade non fanno due icone: il segnalatore tiene un
+            # lucchetto per sessione e la seconda copia si chiude da
+            # sola.
+            if ($autoTray) {
+                try {
+                    $sidTray = (New-Object Security.Principal.NTAccount($Utente)).Translate(
+                                   [Security.Principal.SecurityIdentifier]).Value
+
+                    $montato = $false
+                    $radiceTray = "Registry::HKEY_USERS\$sidTray"
+
+                    if (-not (Test-Path $radiceTray)) {
+                        $nomeT = $Utente.Split('\')[-1]
+                        $datT  = Join-Path $env:SystemDrive "Users\$nomeT\NTUSER.DAT"
+                        if (Test-Path $datT) {
+                            reg load "HKU\AeraRun" "$datT" 2>&1 | Out-Null
+                            if ($LASTEXITCODE -eq 0) {
+                                $radiceTray = "Registry::HKEY_USERS\AeraRun"
+                                $montato = $true
+                            }
+                        }
+                    }
+
+                    if (Test-Path $radiceTray) {
+                        $chiaveRun = Join-Path $radiceTray "Software\Microsoft\Windows\CurrentVersion\Run"
+                        if (-not (Test-Path $chiaveRun)) { New-Item -Path $chiaveRun -Force | Out-Null }
+                        New-ItemProperty -Path $chiaveRun -Name "AeraTray" -Value "`"$exeTray`"" -PropertyType String -Force | Out-Null
+
+                        $letto = (Get-ItemProperty -Path $chiaveRun -Name "AeraTray" -ErrorAction SilentlyContinue).AeraTray
+                        if ($letto) { Scrivi-Ok "Avvio all'accesso registrato anche nel profilo di $Utente" }
+                        else        { Scrivi-Avviso "Avvio all'accesso: voce non scritta nel profilo" }
+                    }
+                    else {
+                        Scrivi-Info "Profilo di $Utente non raggiungibile: resta la sola attivita' pianificata"
+                    }
+
+                    if ($montato) {
+                        [GC]::Collect()
+                        Start-Sleep -Milliseconds 500
+                        reg unload "HKU\AeraRun" 2>&1 | Out-Null
+                    }
+                }
+                catch {
+                    Scrivi-Info "Avvio all'accesso dal profilo non riuscito: resta l'attivita' pianificata"
                 }
             }
 
