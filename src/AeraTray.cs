@@ -43,7 +43,7 @@ namespace AeraTray
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.20";
+        public const string Numero = "1.6.21";
     }
 
     public class Applicativo
@@ -1718,8 +1718,44 @@ namespace AeraTray
         // start e stop di sc.
         private void Comanda(string verbo, Applicativo a)
         {
-            if (a.EServizio) Sc((verbo == "end") ? "stop" : "start", a.Servizio);
-            else Schtasks(verbo, a.Task);
+            if (a.EServizio)
+            {
+                Sc((verbo == "end") ? "stop" : "start", a.Servizio);
+                return;
+            }
+
+            bool riuscito = Schtasks(verbo, a.Task);
+            if (riuscito) return;
+
+            // L'attivita' non c'e' o ha rifiutato. Non ci si ferma qui:
+            // il punto e' che l'applicativo sia su, non per quale
+            // strada ci sia arrivato.
+            if (verbo == "run")
+            {
+                if (!AttivitaEsiste(a.Task))
+                    Annota("  l'attivita' " + a.Task + " non esiste: apro l'eseguibile");
+                else
+                    Annota("  l'attivita' " + a.Task + " non e' partita: apro l'eseguibile");
+
+                if (!AvviaDirettamente(a))
+                    Annota("  non trovo " + a.Percorso);
+            }
+            else
+            {
+                // schtasks /end chiude solo cio' che ha avviato
+                // l'attivita': se l'applicativo e' partito in altro
+                // modo, va chiuso il processo.
+                try
+                {
+                    Process[] q = Process.GetProcessesByName(a.Processo);
+                    if (q.Length > 0)
+                    {
+                        Annota("  chiudo il processo " + a.Processo);
+                        foreach (Process x in q) { try { x.Kill(); } catch { } }
+                    }
+                }
+                catch { }
+            }
         }
 
         private static void Sc(string verbo, string nome)
@@ -1749,7 +1785,10 @@ namespace AeraTray
 
         // In locale non servono credenziali: si agisce nella propria
         // sessione, sulle stesse attivita' che comanda il client.
-        private static void Schtasks(string verbo, string task)
+        // Torna false se l'attivita' non c'e' o il comando fallisce:
+        // chi chiama deve poterlo sapere, invece di credere di aver
+        // fatto qualcosa.
+        private static bool Schtasks(string verbo, string task)
         {
             try
             {
@@ -1764,10 +1803,38 @@ namespace AeraTray
                 {
                     p.StandardOutput.ReadToEnd();
                     p.StandardError.ReadToEnd();
-                    p.WaitForExit(20000);
+                    if (!p.WaitForExit(20000)) { try { p.Kill(); } catch { } return false; }
+                    return p.ExitCode == 0;
                 }
             }
-            catch { }
+            catch { return false; }
+        }
+
+        // L'attivita' pianificata e' la strada preferita: porta con se'
+        // la cartella di lavoro e l'utente giusto. Ma se non c'e' -
+        // perche' l'installazione del server non e' mai stata rifatta
+        // dopo aver aggiunto un applicativo - restare fermi non serve a
+        // nessuno: l'eseguibile si apre lo stesso, in questa sessione,
+        // che su un server con l'autologon e' proprio quella dove le
+        // finestre devono comparire.
+        private static bool AvviaDirettamente(Applicativo a)
+        {
+            try
+            {
+                if (!File.Exists(a.Percorso)) return false;
+
+                var psi = new ProcessStartInfo(a.Percorso);
+                psi.UseShellExecute = true;
+                psi.WorkingDirectory = Path.GetDirectoryName(a.Percorso);
+                Process.Start(psi);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private static bool AttivitaEsiste(string task)
+        {
+            return Schtasks("query /fo csv /nh", task);
         }
 
         private void Invoca(MethodInvoker azione)
