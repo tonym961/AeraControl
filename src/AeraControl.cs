@@ -57,7 +57,7 @@ namespace AeraControl
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.14";
+        public const string Numero = "1.6.15";
     }
 
     // ------------------------------------------------------------------
@@ -2191,7 +2191,12 @@ namespace AeraControl
         // segnaposto. Prima erano sparsi fra Palmari e AeraTray.
         public const string Cartella = @"C:\iotatau\AeraControl";
         public const string NomeExe = "AeraControl.exe";
-        public const string NomeCollegamento = "Aera - Console applicativi";
+        // Lo stesso nome che usa l'installatore. Prima qui c'era
+        // "Aera - Console applicativi" mentre l'installatore scriveva
+        // AeraControl.lnk: due nomi per lo stesso programma, quindi
+        // due icone sul desktop e una pulizia che non trovava mai
+        // niente da togliere perche' cercava il nome sbagliato.
+        public const string NomeCollegamento = "AeraControl";
 
         public static string PercorsoInstallato
         {
@@ -2257,6 +2262,16 @@ namespace AeraControl
             "Aera - Console applicativi"
         };
 
+        // I collegamenti li fa l'installatore, sul desktop pubblico e
+        // nel menu Start. Qui non se ne creano piu' a ogni apertura:
+        // era questa la causa delle due icone sul desktop, una messa
+        // dall'installazione e una dall'avvio del programma, che
+        // cancellava le prime due e ne faceva una sua.
+        //
+        // Restano due compiti: togliere i doppioni lasciati dalle
+        // versioni precedenti, e provvedere da se' nel caso in cui il
+        // programma sia stato avviato senza passare dall'installatore,
+        // dove un collegamento non lo avrebbe messo nessuno.
         public static void CreaCollegamenti()
         {
             string pubblico = Environment.GetFolderPath(
@@ -2266,28 +2281,82 @@ namespace AeraControl
             string menu = Environment.GetFolderPath(
                                   Environment.SpecialFolder.CommonPrograms);
 
-            // Pulizia: i nomi vecchi ovunque, e le copie sul desktop
-            // pubblico e nel menu Start. Prima se ne creavano tre, con
-            // due icone identiche sullo stesso desktop.
+            if (Esiste(pubblico) || Esiste(menu)) return;
+
+            // Nessuno li ha messi: ci si pensa qui. Prima si prova per
+            // tutti, che e' dove li vuole l'installatore; senza
+            // privilegi si ripiega sul proprio desktop.
+            bool fatto = false;
+            try
+            {
+                if (!string.IsNullOrEmpty(pubblico) && Directory.Exists(pubblico))
+                {
+                    CreaCollegamento(Path.Combine(pubblico, NomeCollegamento + ".lnk"));
+                    fatto = true;
+                }
+            }
+            catch { }
+
+            try
+            {
+                if (!string.IsNullOrEmpty(menu) && Directory.Exists(menu))
+                    CreaCollegamento(Path.Combine(menu, NomeCollegamento + ".lnk"));
+            }
+            catch { }
+
+            if (!fatto && !string.IsNullOrEmpty(utente) && Directory.Exists(utente))
+            {
+                try { CreaCollegamento(Path.Combine(utente, NomeCollegamento + ".lnk")); }
+                catch { }
+            }
+        }
+
+        // Va fatta a ogni avvio, senza condizioni: le versioni fino
+        // alla 1.6.14 lasciavano una seconda icona sul desktop
+        // personale accanto a quella pubblica messa dall'installatore,
+        // ed e' il doppione che si vedeva.
+        public static void TogliDoppioni()
+        {
+            string pubblico = Environment.GetFolderPath(
+                                  Environment.SpecialFolder.CommonDesktopDirectory);
+            string utente = Environment.GetFolderPath(
+                                  Environment.SpecialFolder.DesktopDirectory);
+            string menu = Environment.GetFolderPath(
+                                  Environment.SpecialFolder.CommonPrograms);
+
+            // I nomi di una volta vanno via da ogni posto
             foreach (string c in new string[] { pubblico, utente, menu })
             {
                 if (string.IsNullOrEmpty(c) || !Directory.Exists(c)) continue;
                 foreach (string vecchio in NomiVecchi)
                     try { File.Delete(Path.Combine(c, vecchio + ".lnk")); } catch { }
             }
-            foreach (string c in new string[] { pubblico, menu })
-            {
-                if (string.IsNullOrEmpty(c) || !Directory.Exists(c)) continue;
-                try { File.Delete(Path.Combine(c, NomeCollegamento + ".lnk")); } catch { }
-            }
 
-            // Una icona sola, sul desktop dell'utente che sta usando il
-            // computer.
-            if (!string.IsNullOrEmpty(utente) && Directory.Exists(utente))
+            // La copia personale si toglie solo se ce n'e' gia' una
+            // buona altrove: togliendola comunque, chi non ha i
+            // privilegi per il desktop pubblico resterebbe senza.
+            if (Esiste(pubblico) || Esiste(menu)) Togli(utente);
+        }
+
+        private static bool Esiste(string cartella)
+        {
+            try
             {
-                try { CreaCollegamento(Path.Combine(utente, NomeCollegamento + ".lnk")); }
-                catch { }
+                if (string.IsNullOrEmpty(cartella)) return false;
+                return File.Exists(Path.Combine(cartella, NomeCollegamento + ".lnk"));
             }
+            catch { return false; }
+        }
+
+        private static void Togli(string cartella)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(cartella)) return;
+                string f = Path.Combine(cartella, NomeCollegamento + ".lnk");
+                if (File.Exists(f)) File.Delete(f);
+            }
+            catch { }
         }
 
         // Late binding su WScript.Shell: evita di referenziare la
@@ -4007,6 +4076,13 @@ namespace AeraControl
                 try { Installazione.CreaCollegamenti(); }
                 catch { }
             }
+
+            // Sempre, anche quando non c'e' niente da creare: e' la
+            // pulizia del doppione, e prima dipendeva dalla condizione
+            // qui sopra, che con un collegamento gia' presente non
+            // scattava mai.
+            try { Installazione.TogliDoppioni(); }
+            catch { }
 
             Application.Run(new FormPrincipale());
         }

@@ -35,7 +35,7 @@ namespace SetupAera
     // AeraTray.cs. La nota estesa sta in AeraControl.cs.
     public static class Versione
     {
-        public const string Numero = "1.6.14";
+        public const string Numero = "1.6.15";
     }
 
     // ------------------------------------------------------------------
@@ -1228,15 +1228,21 @@ namespace SetupAera
             Log("premere Configura per indicare server, utente e password.");
         }
 
+        // Desktop per tutti gli utenti e menu Start: uno solo per
+        // posto, e sono questi i padroni dei collegamenti. La console
+        // non ne crea piu' all'avvio, altrimenti sul desktop ne
+        // comparivano due, una dall'installazione e una dall'apertura.
         private void Collegamenti()
         {
             string bersaglio = Path.Combine(Cartella, "AeraControl.exe");
-            var dove = new List<string>();
-            dove.Add(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory));
-            dove.Add(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms));
+
+            string pubblico = Environment.GetFolderPath(
+                                  Environment.SpecialFolder.CommonDesktopDirectory);
+            string menu = Environment.GetFolderPath(
+                                  Environment.SpecialFolder.CommonPrograms);
 
             int fatti = 0;
-            foreach (string c in dove)
+            foreach (string c in new string[] { pubblico, menu })
             {
                 if (string.IsNullOrEmpty(c) || !Directory.Exists(c)) continue;
                 try
@@ -1246,7 +1252,29 @@ namespace SetupAera
                 }
                 catch { }
             }
-            Log(fatti > 0 ? "[OK] collegamenti creati" : "[!]  collegamenti non creati");
+
+            // Le versioni fino alla 1.6.14 ne lasciavano una sul
+            // desktop personale: accanto a quella pubblica farebbe due
+            // icone uguali.
+            try
+            {
+                string mio = Environment.GetFolderPath(
+                                 Environment.SpecialFolder.DesktopDirectory);
+                if (!string.IsNullOrEmpty(mio))
+                {
+                    string doppione = Path.Combine(mio, "AeraControl.lnk");
+                    if (File.Exists(doppione))
+                    {
+                        File.Delete(doppione);
+                        Log("[OK] tolto il collegamento doppio dal desktop");
+                    }
+                }
+            }
+            catch { }
+
+            if (fatti == 2)      Log("[OK] collegamenti creati: desktop e menu Start");
+            else if (fatti == 1) Log("[OK] collegamento creato");
+            else                 Log("[!]  collegamenti non creati");
         }
 
         // Late binding su WScript.Shell: evita di referenziare la
@@ -1373,6 +1401,10 @@ namespace SetupAera
             if (Risorse.Scrivi("AeraControl.exe", Path.Combine(Cartella, "AeraControl.exe"), out guaio))
                 Log("[OK] console installata");
 
+            // Anche sul server: la console serve per provare da li',
+            // e senza collegamento bisognerebbe andarsela a cercare
+            // nella cartella.
+            Collegamenti();
             CopiaInstallatore();
             VoceDisinstalla();
             PuliziaVecchie();
