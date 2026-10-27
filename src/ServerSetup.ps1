@@ -19,7 +19,13 @@ param(
     [switch] $AvviaSegnalatore,
 
     # Nessuna domanda, nessun menu di prova, nessuna attesa di INVIO.
-    [switch] $NonInterattivo
+    [switch] $NonInterattivo,
+
+    # Solo il segnalatore: niente attivita' pianificate degli
+    # applicativi, niente UAC di rete, profilo di rete o firewall.
+    # Serve a sorvegliare e far ripartire cio' che gira su questa
+    # macchina, senza aprirla al comando da remoto.
+    [switch] $SoloSegnalatore
 )
 
 #--------------------------------------------------------------------
@@ -33,7 +39,7 @@ param(
 # solo nella cartella di lavoro, fuori dal controllo di versione, e
 # nessuno se ne accorgeva. Ora sta in src/ e la compilazione controlla
 # anche lui.
-$VersioneServer = "1.6.24"
+$VersioneServer = "1.6.25"
 
 # Utente proprietario delle attivita' pianificate.
 # Le finestre compaiono nella sessione di QUESTO utente: deve essere
@@ -163,6 +169,13 @@ elseif ($altri.Count -gt 0) {
 Write-Host ""
 Write-Host "   Server : $env:COMPUTERNAME" -ForegroundColor Gray
 Write-Host "   Utente : $Utente" -ForegroundColor Gray
+
+# Tutto quello che segue, fino al segnalatore, serve a farsi comandare
+# da un client: attivita' pianificate, UAC di rete, firewall, account e
+# autologon. Con -SoloSegnalatore non serve niente di questo, e il
+# corpo resta non rientrato apposta, per non spostare quattrocento
+# righe e rendere illeggibile la modifica.
+if (-not $SoloSegnalatore) {
 
 #--------------------------------------------------------------------
 # 1. ATTIVITA' PIANIFICATE
@@ -629,6 +642,8 @@ try {
 catch {
     Scrivi-Avviso "Stato autologon non verificabile"
 }
+
+}   # fine della parte che riguarda il comando da remoto
 
 #--------------------------------------------------------------------
 # 7. SEGNALATORE DI STATO (icona accanto all'orologio)

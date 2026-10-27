@@ -9,8 +9,8 @@ visibili sul monitor del server.
 
 Portare **`Setup-AeraControl.exe`** sulla macchina ed eseguirlo. Chiede
 da solo i privilegi di amministratore, che gli servono per forza, e poi
-chiede se il computer e' il server o un client: del resto si occupa lui,
-in un'unica finestra, senza aprirne altre.
+chiede che ruolo ha il computer: del resto si occupa lui, in un'unica
+finestra, senza aprirne altre.
 
 Rieseguirlo su una macchina che ha gia' una versione precedente la
 aggiorna: riconosce quella installata, chiude cio' che sta girando e
@@ -29,6 +29,13 @@ riscrive tutto.
   aperte restano registrate, quindi riaccendendolo tornano valide.
 - **Client** — installa la console e crea i collegamenti. Poi si preme
   *Configura* e si indicano server, utente e password.
+- **Segnalatore** — installa il solo segnalatore, con i collegamenti sul
+  desktop e nel menu Start. Sorveglia gli applicativi di questa
+  macchina e li rimette in piedi se cadono, ma non apre niente
+  all'esterno: niente attivita' pianificate, niente firewall spento,
+  nessun comando che arrivi da un client. Serve dove il server non va
+  comandato da fuori ma deve comunque ripartire da solo dopo un
+  riavvio.
 
 Tutto finisce in `C:\iotatau\AeraControl`.
 

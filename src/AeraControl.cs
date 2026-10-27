@@ -57,7 +57,7 @@ namespace AeraControl
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.24";
+        public const string Numero = "1.6.25";
     }
 
     // ------------------------------------------------------------------

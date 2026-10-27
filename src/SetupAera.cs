@@ -35,7 +35,7 @@ namespace SetupAera
     // AeraTray.cs. La nota estesa sta in AeraControl.cs.
     public static class Versione
     {
-        public const string Numero = "1.6.24";
+        public const string Numero = "1.6.25";
     }
 
     // ------------------------------------------------------------------
@@ -51,6 +51,7 @@ namespace SetupAera
         public static readonly Color Verde      = Color.FromArgb(38, 148, 88);
         public static readonly Color Blu        = Color.FromArgb(46, 110, 180);
         public static readonly Color Rosso      = Color.FromArgb(190, 76, 70);
+        public static readonly Color Ambra      = Color.FromArgb(198, 132, 30);
 
         public static GraphicsPath Tondo(Rectangle r, int raggio)
         {
@@ -227,7 +228,9 @@ namespace SetupAera
         public Color Tinta = Stile.Blu;
         public string Titolo = "";
         public string Descrizione = "";
-        public bool Server = false;
+        public int Figura = Scheda.Schermo;
+
+        public const int Armadio = 0, Schermo = 1, Campana = 2;
         private bool scelta, sotto;
 
         public bool Scelta
@@ -300,7 +303,7 @@ namespace SetupAera
             using (var b = new SolidBrush(c))
             using (var pallino = new SolidBrush(Color.White))
             {
-                if (Server)
+                if (Figura == Armadio)
                 {
                     // Tre moduli impilati, come un armadio rack
                     for (int i = 0; i < 3; i++)
@@ -309,6 +312,17 @@ namespace SetupAera
                         using (GraphicsPath gp = Stile.Tondo(m, 2)) g.FillPath(b, gp);
                         g.FillEllipse(pallino, m.X + 3, m.Y + 3, 3, 3);
                     }
+                }
+                else if (Figura == Campana)
+                {
+                    // Una campanella: e' quello che fa, avvisa e
+                    // rimette in piedi, e non comanda niente da fuori.
+                    int cx = r.X + r.Width / 2;
+                    g.FillPie(b, cx - 9, r.Y + 5, 18, 18, 180, 180);
+                    g.FillRectangle(b, cx - 9, r.Y + 14, 18, 7);
+                    var orlo = new Rectangle(r.X + 2, r.Y + 21, r.Width - 4, 3);
+                    using (GraphicsPath gp = Stile.Tondo(orlo, 1)) g.FillPath(b, gp);
+                    g.FillEllipse(b, cx - 2, r.Y + 25, 4, 4);
                 }
                 else
                 {
@@ -635,7 +649,7 @@ namespace SetupAera
         public const string Cartella = @"C:\iotatau\AeraControl";
 
         private TextBox txtLog;
-        private Scheda schServer, schClient;
+        private Scheda schServer, schClient, schSegnalatore;
         private PulsanteTondo btnInstalla, btnRimuovi, btnChiudi;
         private BarraRegistro barra;
         private Riquadro cornice, opzioni;
@@ -646,6 +660,7 @@ namespace SetupAera
         // silenzio, senza aprire una seconda finestra nera.
         private TextBox txtUtente;
         private CheckBox chkSegnalatore;
+        private Label etUtente, etPwd;
 
         // L'accesso automatico e' il presupposto di tutto: senza un
         // utente connesso in console le finestre non compaiono.
@@ -726,13 +741,13 @@ namespace SetupAera
             domanda.Size = new Size(400, 18);
             Controls.Add(domanda);
 
-            int largaScheda = (Largo - 40 - 12) / 2;
+            int largaScheda = (Largo - 40 - 20) / 3;
 
             schServer = new Scheda();
-            schServer.Server = true;
+            schServer.Figura = Scheda.Armadio;
             schServer.Tinta = Stile.Verde;
             schServer.Titolo = "Server";
-            schServer.Descrizione = "Qui girano gli applicativi e compaiono le finestre";
+            schServer.Descrizione = "Qui girano gli applicativi, e si comanda da un client";
             schServer.Location = new Point(20, 114);
             schServer.Size = new Size(largaScheda, 122);
             schServer.Click += delegate { Scegli(1); };
@@ -741,11 +756,24 @@ namespace SetupAera
             schClient = new Scheda();
             schClient.Tinta = Stile.Blu;
             schClient.Titolo = "Client";
-            schClient.Descrizione = "Da qui si comandano gli applicativi che stanno sul server";
-            schClient.Location = new Point(20 + largaScheda + 12, 114);
+            schClient.Descrizione = "Da qui si comandano gli applicativi del server";
+            schClient.Location = new Point(20 + largaScheda + 10, 114);
             schClient.Size = new Size(largaScheda, 122);
             schClient.Click += delegate { Scegli(2); };
             Controls.Add(schClient);
+
+            // Terzo ruolo: il segnalatore da solo. Sorveglia e fa
+            // ripartire cio' che gira qui, senza aprire la macchina al
+            // comando da remoto.
+            schSegnalatore = new Scheda();
+            schSegnalatore.Figura = Scheda.Campana;
+            schSegnalatore.Tinta = Stile.Ambra;
+            schSegnalatore.Titolo = "Segnalatore";
+            schSegnalatore.Descrizione = "Sorveglia e riavvia solo gli applicativi di qui";
+            schSegnalatore.Location = new Point(20 + (largaScheda + 10) * 2, 114);
+            schSegnalatore.Size = new Size(largaScheda, 122);
+            schSegnalatore.Click += delegate { Scegli(3); };
+            Controls.Add(schSegnalatore);
 
             // Compaiono solo scegliendo Server: sul client non
             // servono, e una finestra che mostra impostazioni che non
@@ -754,7 +782,7 @@ namespace SetupAera
             opzioni.Visible = false;
             Controls.Add(opzioni);
 
-            var etUtente = new Label();
+            etUtente = new Label();
             etUtente.Text = "Utente proprietario delle attivita' pianificate";
             etUtente.Font = new Font("Segoe UI", 8.5F);
             etUtente.ForeColor = Stile.TestoTenue;
@@ -803,7 +831,7 @@ namespace SetupAera
             };
             opzioni.Controls.Add(chkAutologon);
 
-            var etPwd = new Label();
+            etPwd = new Label();
             etPwd.Text = "Password";
             etPwd.Font = new Font("Segoe UI", 8.5F);
             etPwd.ForeColor = Stile.TestoTenue;
@@ -895,6 +923,7 @@ namespace SetupAera
         {
             schServer.Scelta = (ruolo == 1);
             schClient.Scelta = (ruolo == 2);
+            schSegnalatore.Scelta = (ruolo == 3);
 
             if (bloccato)
             {
@@ -913,6 +942,11 @@ namespace SetupAera
             {
                 btnInstalla.Tinta = Stile.Blu;
                 btnInstalla.Text = "Installa come client";
+            }
+            else if (ruolo == 3)
+            {
+                btnInstalla.Tinta = Stile.Ambra;
+                btnInstalla.Text = "Installa solo il segnalatore";
             }
             else
             {
@@ -972,8 +1006,9 @@ namespace SetupAera
             }
 
             ApriRegistro(true);
-            if (ruolo == 1) InBackground(InstallaServer);
-            else            InBackground(InstallaClient);
+            if (ruolo == 1)      InBackground(InstallaServer);
+            else if (ruolo == 3) InBackground(InstallaSegnalatore);
+            else                 InBackground(InstallaClient);
         }
 
         // Che cosa c'e' gia' installato qui. Serve a dire se questa e'
@@ -1041,12 +1076,27 @@ namespace SetupAera
         {
             int y = 246;
 
-            opzioni.Visible = (ruolo == 1);
+            opzioni.Visible = (ruolo == 1 || ruolo == 3);
             if (opzioni.Visible)
             {
+                // Installando il solo segnalatore non ci sono attivita'
+                // pianificate da intestare a nessuno, e la casella per
+                // aprirlo a ogni accesso non ha senso: e' tutto quello
+                // che si sta installando, quindi si apre e basta.
+                bool solo = (ruolo == 3);
+                etUtente.Text = solo ? "Utente nella cui sessione gira il segnalatore"
+                                     : "Utente proprietario delle attivita' pianificate";
+                chkSegnalatore.Visible = !solo;
+
+                int su = solo ? 26 : 0;
+                chkAutologon.Location = new Point(12, 90 - su);
+                etPwd.Location = new Point(34, 118 - su);
+                txtPassword.Location = new Point(104, 115 - su);
+                lblAutologon.Location = new Point(312, 119 - su);
+
                 opzioni.Location = new Point(20, y);
-                opzioni.Size = new Size(Largo - 40, 150);
-                y += 150 + 10;
+                opzioni.Size = new Size(Largo - 40, 150 - su);
+                y += 150 - su + 10;
                 MostraStatoAutologon();
             }
 
@@ -1146,6 +1196,7 @@ namespace SetupAera
             if (bloccato) attivi = false;
             schServer.Enabled = attivi;
             schClient.Enabled = attivi;
+            schSegnalatore.Enabled = attivi;
             btnRimuovi.Enabled = attivi;
             btnInstalla.Enabled = attivi && ruolo != 0;
         }
@@ -1226,6 +1277,35 @@ namespace SetupAera
             Log("");
             Log("Fatto. Aprire AeraControl dal collegamento sul desktop e");
             Log("premere Configura per indicare server, utente e password.");
+        }
+
+        // Installando il solo segnalatore non c'e' nessuna console, e
+        // l'icona sul desktop tocca a lui.
+        private void CollegamentiSegnalatore()
+        {
+            string bersaglio = Path.Combine(Cartella, "AeraTray.exe");
+            if (!File.Exists(bersaglio)) { Log("[!]  collegamenti non creati"); return; }
+
+            string pubblico = Environment.GetFolderPath(
+                                  Environment.SpecialFolder.CommonDesktopDirectory);
+            string menu = Environment.GetFolderPath(
+                              Environment.SpecialFolder.CommonPrograms);
+
+            int fatti = 0;
+            foreach (string c in new string[] { pubblico, menu })
+            {
+                if (string.IsNullOrEmpty(c) || !Directory.Exists(c)) continue;
+                try
+                {
+                    Collegamento(Path.Combine(c, "AeraControl - Segnalatore.lnk"), bersaglio);
+                    fatti++;
+                }
+                catch { }
+            }
+
+            if (fatti == 2)      Log("[OK] collegamenti creati: desktop e menu Start");
+            else if (fatti == 1) Log("[OK] collegamento creato");
+            else                 Log("[!]  collegamenti non creati");
         }
 
         // Desktop per tutti gli utenti e menu Start: uno solo per
@@ -1361,7 +1441,10 @@ namespace SetupAera
                     k.SetValue("DisplayVersion", Versione.Numero);
                     k.SetValue("Publisher", "IOTATEC srl");
                     k.SetValue("InstallLocation", Cartella);
-                    k.SetValue("DisplayIcon", Path.Combine(Cartella, "AeraControl.exe"));
+                    // Installando il solo segnalatore la console non c'e'
+                    string icona = Path.Combine(Cartella, "AeraControl.exe");
+                    if (!File.Exists(icona)) icona = Path.Combine(Cartella, "AeraTray.exe");
+                    k.SetValue("DisplayIcon", icona);
                     k.SetValue("UninstallString",
                                "\"" + Path.Combine(Cartella, "Setup-AeraControl.exe") + "\"");
                     k.SetValue("NoModify", 1, Microsoft.Win32.RegistryValueKind.DWord);
@@ -1428,40 +1511,26 @@ namespace SetupAera
             VoceDisinstalla();
             PuliziaVecchie();
 
-            if (autologonScelto)
-            {
-                Log("");
-                string perche;
-                // La password non passa mai da una riga di comando, che
-                // sarebbe visibile nell'elenco dei processi, e non
-                // compare in nessuna riga di questo registro.
-                if (Autologon.Configura(utenteScelto, passwordScelta, out perche))
-                {
-                    bool acceso, inChiaro;
-                    string chi = Autologon.Stato(out acceso, out inChiaro);
+            ConfiguraAutologon();
 
-                    if (acceso)
-                    {
-                        Log("[OK] accesso automatico per " + chi);
-                        Log("     password nel deposito segreti, non nel registro");
-                        if (inChiaro)
-                            Log("[!]  ne resta una in chiaro nel registro: da togliere");
-                    }
-                    else Log("[X] accesso automatico: scritto ma non risulta attivo");
-                }
-                else
-                {
-                    Log("[X] accesso automatico non configurato: " + perche);
-                    Log("    senza, le finestre non compariranno sul monitor.");
-                }
+            ScriptDelServer(false);
+        }
 
-                // Non deve restare in memoria oltre il necessario
-                passwordScelta = "";
-            }
-
+        // Lo script del server gira in silenzio e scrive dentro il
+        // registro di questa finestra, riga per riga. Con
+        // soloSegnalatore salta tutto quello che riguarda il comando
+        // da remoto e si limita all'avvio automatico.
+        private void ScriptDelServer(bool soloSegnalatore)
+        {
+            string guaio;
             Log("");
-            Log("Configurazione del server: attivita' pianificate, UAC di");
-            Log("rete, profilo di rete e firewall.");
+            if (soloSegnalatore)
+                Log("Configurazione del segnalatore: avvio automatico.");
+            else
+            {
+                Log("Configurazione del server: attivita' pianificate, UAC di");
+                Log("rete, profilo di rete e firewall.");
+            }
             Log("");
 
             string ps = Path.Combine(Path.GetTempPath(), "AeraSetupServer.ps1");
@@ -1476,7 +1545,8 @@ namespace SetupAera
                 "-NoProfile -ExecutionPolicy Bypass -File \"" + ps + "\"" +
                 " -NonInterattivo" +
                 " -UtenteTask \"" + utenteScelto.Replace("\"", "") + "\"" +
-                (segnalatoreScelto ? " -AvviaSegnalatore" : "");
+                (soloSegnalatore ? " -SoloSegnalatore" : "") +
+                ((segnalatoreScelto || soloSegnalatore) ? " -AvviaSegnalatore" : "");
 
             try
             {
@@ -1504,11 +1574,85 @@ namespace SetupAera
                     p.WaitForExit();
                 }
                 Log("");
-                Log("Configurazione del server terminata.");
+                Log(soloSegnalatore ? "Configurazione terminata."
+                                    : "Configurazione del server terminata.");
             }
             catch (Exception ex) { Log("[X] " + ex.Message); }
 
             try { File.Delete(ps); } catch { }
+        }
+
+        private void ConfiguraAutologon()
+        {
+            if (!autologonScelto) return;
+
+            Log("");
+            string perche;
+            // La password non passa mai da una riga di comando, che
+            // sarebbe visibile nell'elenco dei processi, e non compare
+            // in nessuna riga di questo registro.
+            if (Autologon.Configura(utenteScelto, passwordScelta, out perche))
+            {
+                bool acceso, inChiaro;
+                string chi = Autologon.Stato(out acceso, out inChiaro);
+
+                if (acceso)
+                {
+                    Log("[OK] accesso automatico per " + chi);
+                    Log("     password nel deposito segreti, non nel registro");
+                    if (inChiaro)
+                        Log("[!]  ne resta una in chiaro nel registro: da togliere");
+                }
+                else Log("[X] accesso automatico: scritto ma non risulta attivo");
+            }
+            else
+            {
+                Log("[X] accesso automatico non configurato: " + perche);
+                Log("    senza, le finestre non compariranno sul monitor.");
+            }
+
+            // Non deve restare in memoria oltre il necessario
+            passwordScelta = "";
+        }
+
+        // ---------------------------------------- solo il segnalatore
+        //
+        // Niente console, niente attivita' pianificate, nessun comando
+        // che arrivi da fuori: resta il segnalatore, che sorveglia gli
+        // applicativi di questa macchina e li rimette in piedi se
+        // cadono. Serve dove non c'e' un client che comanda ma la
+        // macchina deve comunque ripartire da sola dopo un riavvio.
+        private void InstallaSegnalatore()
+        {
+            Log("");
+            Log("--- installazione del solo segnalatore ---");
+
+            if (!Amministratore)
+            {
+                Log("Servono i privilegi di amministratore. Rilanciare come tale.");
+                return;
+            }
+            if (!PreparaCartella()) return;
+
+            DiCosaSiTratta();
+
+            ChiudiSeAperto("AeraTray");
+
+            string guaio;
+            if (!Risorse.Scrivi("AeraTray.exe", Path.Combine(Cartella, "AeraTray.exe"), out guaio))
+            { Log("[X] segnalatore: " + guaio); return; }
+            Log("[OK] segnalatore installato");
+
+            if (Risorse.Scrivi("icona.ico", Path.Combine(Cartella, "icona.ico"), out guaio))
+                Log("[OK] icona");
+
+            CollegamentiSegnalatore();
+            CopiaInstallatore();
+            VoceDisinstalla();
+            PuliziaVecchie();
+
+            ConfiguraAutologon();
+            ScriptDelServer(true);
         }
 
         // --------------------------------------------------- rimozione
@@ -1555,6 +1699,8 @@ namespace SetupAera
                 {
                     string f = Path.Combine(c, "AeraControl.lnk");
                     if (File.Exists(f)) File.Delete(f);
+                    string segn = Path.Combine(c, "AeraControl - Segnalatore.lnk");
+                    if (File.Exists(segn)) File.Delete(segn);
                     string vecchio = Path.Combine(c, "Aera - Console applicativi.lnk");
                     if (File.Exists(vecchio)) File.Delete(vecchio);
                 }
