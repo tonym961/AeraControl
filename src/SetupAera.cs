@@ -35,7 +35,7 @@ namespace SetupAera
     // AeraTray.cs. La nota estesa sta in AeraControl.cs.
     public static class Versione
     {
-        public const string Numero = "1.6.17";
+        public const string Numero = "1.6.18";
     }
 
     // ------------------------------------------------------------------

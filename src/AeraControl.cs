@@ -57,7 +57,7 @@ namespace AeraControl
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.17";
+        public const string Numero = "1.6.18";
     }
 
     // ------------------------------------------------------------------
@@ -391,8 +391,80 @@ namespace AeraControl
             return Incorporata(task);
         }
 
+        // Dentro AeraReplicator.exe l'icona c'e' solo a 32 pixel, e
+        // nella tessera si vede sgranata: il disegno e' giusto, manca
+        // la risoluzione. Si tiene qui la stessa immagine a 64, presa
+        // dal file dell'applicativo, e non si scarica dal server.
+        private const string IconaReplicator =
+            "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMA" +
+            "AA7DAcdvqGQAAA/bSURBVHhe7Vt7UJtXdk+7zXSmaWdnttlpdxPbiR9I4o0+CXu3f2TbjrdJ09lkm02n2e4jW2+dbqadbLK78QOw" +
+            "BNgY2zg2LwkJP7CdOHVSx4kBIRBgA8aP4CcGgz49eNiYhwAhJAHGSX6dc4WwuJKQcGwnnfGZ+Y2wpO/ec3733HPuOVd+5JGH8lAe" +
+            "ykN5KA9GkvPFbyv15mRBK64W9NZXFCXWtXKN+BuFpuPfBa39BUHb+TcpRZblgg6P8s/+v5TEg/2PCVrLDxQ6W7agFesUJVa7QitO" +
+            "p+6/gZVlN4OgLO2CoLWMKHW2i4oSy7tKfderSr0thh/3ay/JWjFWuceeI+jsbco93Vh5YBArDwwgdd91ZqRCZ4WihIPOCqXOBuWe" +
+            "Hqzcf5N9n6DQ28YEnfW4oDW/ElvU9uf8XF8rSSm2JSr3dO9T6LvcKw8OIXV/HzNKUWK5azACDw6ysYQSa5tcJ76euKP6MX7ur1SE" +
+            "vM7HBb1th6K0x73q0BCUpd1Bhnxp6KyznqHQ2c7LS6zP83p8JZKs6XxOobd3rDo0zNw3SPF7DSLiQD+R/IVCby8Ucs9/k9fpgYlc" +
+            "a9mg3Ns7vbKsP1jR+wyKJasOOSCUdn2q0Fjjed3uqwi684/KtebSVQcGZ1ZdDFLwQYHig0Jv75drOv+O1/O+CBmv0IiHiX2l/ssF" +
+            "uHsDkaVQhb7LJS++9kNe33subOXfdVAgCqFM9BBCgP9O9BBZgFTqbU655toqXud7JvJi8wbK6Qq9PYQS84MMTCgWISsUEVsoIo5Q" +
+            "dAf0nv+zFE3w85EhsuCo0NutimLLIl73Ly3JhddWK/b03Ka8HDx5eMi1FmYYGfnsARv+u7wH+adu4oPLgzB2DMHU6cDx9iGUtfRD" +
+            "XXcD//ZhF1bpLZAWmBlh/HiRQFtTrjUbXv7gg2/wNty1KAuv/aVQYhF90T56pWiVkzQi/uNYD462DsI+6ITXM45Jb3iMjLnQ0j2C" +
+            "dxr78A8HbIyI5DAeEXLr6Gyg4CwUdb7J23HXIteYd7J9z08WBrTqpPhP3rfDcM0B1/g4pibcGHf7DByeB6MuFyPp1oQbXYNO7Gjo" +
+            "Q6rOgtiiucQLWgsjV6kLnj91by8RMUqFFW/LgkVe2JGg0Fknoz3kJGtExBeJUNfeQP/IGG5NjDOjeEOjgdvtI6LJ6sCP3rUzUv3G" +
+            "SwtEqGqv41dHu9l8vB7sjFDcWcbbs2ARSsSDNBg/QSgkaSxILBahO9uPCe84W3HeqBGXC26PG1OTHkwSJjzs74kJD8bGQ3x/zMVI" +
+            "tA048fMPuxCTb4akQMTbxl5MTozj9eO9kBYGE8CKLr39lkIjpvA2RS0pxWaZQm/zRhP4yO0p0JWc7Wer5nTNNWbURdvAw4y/2juE" +
+            "yss9KGu2oLRRxJFzdjSZ+3Bz2Ilbk16Mu91BRBCh3UNOvPS+HW9U9MDpcuH2pBtrjvWwIMvrQ6C6RF5s3svbFbXItZatqw4OBQ0c" +
+            "CswlTdeZoqRcoPIerxvjHjfKL3VjzYFzUObW4em0KizeaMCSjQYs3mCATF2NfyxoQp6xHbb+EUxNepm3BI5DW8I64ETfyBj72+MZ" +
+            "x6/nISB1Tw8ErXVEUXx14WmRam+5VuykMpQfmAet/EuH7bOKBSpNLm7tH8Zv3mvB0+kGPLm+AsvSKiHZVAWpH6oqxGQYsGRDJb67" +
+            "rgLP5J3AsQtd7FnynMDxXO5xOMd9W4OC5XwEUJ+Bzi3UdeLtiyjUyWEVV4QTH7k+7fvytiFMT9xR1jFj/JXuQfwwvwHfebscMZuq" +
+            "ELe5DgnbTiPpnQtIyb+ClPxWJO++hMS8TxGf08A8YcmGCixLr4L2RCeLDbwnEKIjwMLKZ0ErVvH2RRSFRtzMCo0QgwaCTm6/+qgb" +
+            "Y+OuOa5Pe71rYATP5jfiu2+XIza7Hsm7LkHQmlkNwbo/gaC6QmdFSmEbEnJPYVm6AU9trMSeRhEejzsofUZLAEuJGtGRkC8+yds4" +
+            "r1APjzUfQgzqBx1C6LBz5PIgi9SzyrlcTOk3j1zAX//hOBK2Nc8Ybp9phwWP5YePECuSdl3EX62vwh8+vMjI5L0gWgJovtR9N5BS" +
+            "YnmWtzGsCLq+xwWt2E09vKABA0Cuv7rMBsuAc87eJ9eva7uOFekGxOae9hkdwfBAELHSQgt+X26FY9QJZ5j0GBUBM9uAehe8nWEl" +
+            "VWtPUmgtt1guDTGgHzTxGxW9wLSXpThfTvcCtyfxxvstWKyqn2148s+GAxlPR1917XVMT3rwxfQEG5cHzYfbXrz2SehzQCBYHNBY" +
+            "DvF2hpVkrW116r6+iIqTB/z6WDcOnrahtMGM0gYRextFaOo78L3t9UjIb1twU5SMX73fhn0tA3jvQj/0DSIbNxTKmsx44RDpETxO" +
+            "IHyB0HyStzOsyEvEn7ImQwQCyLikgnYsTqvCko2VLKf78noFc/3UuyibfeNakVAkYml2IxZvuDMuj0UbKpC4+wpSI5BMtggllovP" +
+            "qE78CW9rSFGUmNcyAljPPnjAO4raWDqTZFSyXO7P65TjUwpaF7z6PlgpbSEupyloXB70eTTz+Frqlvao7xWEEvE/oyGAKVvc4cvn" +
+            "Ba0+5NPrVSi08+/L8LBC0HTOHTMc8lshaKhAml9PuolSlFiufX9Px1/wtoYUQSuuiY4AXwGUoLEGIb7YVxX6kbTA5gZ/RkjW2oLm" +
+            "SNRE1o/g8wDxqqA7/2e8rSElpaj1tWgIoLL0uYM2/PNhO158Lzxe/p8u9krf58eIBnTa/Nt91jnz/PiwnZXI1D2KNC4jQNN5LVZ1" +
+            "IrotEL/zwmusBpgnCFK6opWtaB9iebnHMRYCTvSPjuHG8Bh+W9mDhAjROhTYYatIxOFLAxh23pln0OlCs20Y39dbI/YQyZbkgvZr" +
+            "3369KEoCtp75mdLXVQkajFfshMWBzybdrJafCyph3fB4Pcio7UN8cYj2VRSgrURe1usYY5Wmf+zPptz4uM3BdIg0Lnlz8u4rlx4R" +
+            "1kZ37S7LrH2OjJ+v7+8noNbsYL08/qRGp7cbjlG8+VE7luacQ9LuK1BG2FI8aA5qgGjP3MRU4FGbToHecbz1iQhpfmfQczzoHJCw" +
+            "/VwTb2dYWbb+mJC06/Jn811yRiLA6/Wg2dyHp9MMWLrJBKGofd4tFQoxBSJ+8b9dzN1p1f1jU53R1jOAlTuakFjsa5OFh5Vtgbic" +
+            "xiO8nWFl8cZD34nPPd03Xy0QiQBaJaoPdA0WyHa1RR2x/ZDkm/H8QTva+0bZmZ/Ka//Y01NebK1sxdPZzRHPAOzz0m4qszN5O8OL" +
+            "SvXHsVn1zYyAMKsWigC+ZKVmKNXzhy4OYqXOwnp5FNH5sQJBx+sV+Wa8cqQLV2+MBpFL41GPQcgxIW7XlcgE6O1IKWpHTPrxF3kz" +
+            "55WYDMNugX61ESYO8ATQniflqGMTuFpEwuSEG2fsw1j7cQ9SNCLr7lIh5T8jsFuhAnpfZOnunaY+3BwZYysfaPyYmxqtbqwpO4vF" +
+            "m+qgDKEXD+pnxuU0uJb//qNlvI3zyoqNHz+fuLOFfqISNGggASazA5/f8mBwdAy5VW1o7Rli1VogCWzlGEkunBQd2Hqyj7WzX3q/" +
+            "i+Xzfz3Shd9W9KKsZQCd/aOY8o6zu4TA54ngW1Me5BnbsGhDJZJ2X468+vS53g7pJmMTeTVv47wSqzJ+S6qq7qUgEmoiIoAuKxpt" +
+            "I5ie9DU/vvW7T/CTkmb0DFJT0zPHAL83EBHkMdQypx4ipTeH01fb0/t8T5Gt/Izx+gYzlm6shHRLEyuYeJ14sBNkQSti0svX8fZF" +
+            "JTHpFdrkgqthCaAylLZAxrFLeGJdBaTqGjyxvhIvaJrQ2jOI27cmgtrjflCHhyI7GUetND5++OGd8LCO8s7qdixNM2C5ysTqj3Cx" +
+            "aRY6G+tCybJM3pgNx6W8bVGJdKNhlSyr9nN5cUdIEui9F/TnsTytHLLsesiL2hG/7RSeXHcc39tWh8NnbXC76RLEG7KrEw4sg3jc" +
+            "LNq39Q5h7aEWVmKv2GRkhVYoXYKgsyE5vxWS9IqPeLuiF+CPJOkVhsRdF0MyToqsyKyHNJPyfAeU+i5WBcZvbcJTGyvYGeDVsnOo" +
+            "udrL2tu3prwsPtCKEiHkBQT6jAIc3R8QWXRj1HnDgbzqdqRurcMT68qZdyXnR476TC+9jTVXY7PrvojJMPw9b9aCZHmG4RlZlunz" +
+            "5JBBx4qE7WcgL2ybzRb+vZm4/Qxrgy9aX4GYTUa8rGtGQW0HGjpuQOwbxpBzjK2y1+sj47pjFJe6BnC0pQtvfXARq3Lr8OT6Srbn" +
+            "4zbXM4PCBeQ50FE5bUZCXgutvoEWkbdpwSLdZHgvfvtZpkQQCVT3894x86NHIo2Up0sPcmGK3hKVkV18/Fh7Cj/dcwY/23sG/6I/" +
+            "jecKGiHk1OKpNAMWkeFpleyOgIgkg4LmDQfqJuV9Cqm6ejomw6DkbbkrWaEyLZWqq4fit51mzYq5ygRvDT/IKygQJb1zHnFbTkCq" +
+            "NjIyyDi6/CDvIBA5dAewPN3AOj2xmSZ2ecI8i+biCQ4Dmo/mis9tpnnyeDu+lEhUVa/GbjnJ9reCevwLWBHf9hBZAEvKa0F87inE" +
+            "bTmJuM0nmIfQK90K0Xaiy5PZoBvtHDMnPno2LvcUkXgp6tp/ISJVGUvicpsRn9O4MBIYZn4LPAN6j7yD4N9Gs59FueKB45LxsVsa" +
+            "IMs0jcmyDHd/JT6fLM83/KlEVVUTt62ZrSDlY3bbE6RUlJi9MFmIwXOfJ+OTdrYgdnM9ZFl1n0kyKl/i9b6nwk6IWabG+G3NlGao" +
+            "0TB7rxek4H0EGU7dY58e9UTA5zHq6jW8vvdFYt46/rgsy1RDQVGWWcP2rv/S874TMbNFqCNM8SN28wkiYIpiFK/nfZXE31U/JlXX" +
+            "7I/b2gRZdh3zBrrQJCXvBxH++CAvusYuWylFUjCVZdXelKZX/hOv3wMTqcr4X7LsWidFX1KKIjpdlvjT5cKDmh8zQZFlELo2v8pS" +
+            "I3kcuXzcVma8Uaqq/Or/R4kkvSZBll37CUttOY2MiNisWrY16IKDyAiM8neI8YF/n31G7fDCdl9en/nhBI3Jtl2WaUCqqnpLWKuL" +
+            "rsn5oESyqeplibrmNJ0XfCtkgkxlZNsjPqcJiTvOIXnXRbZ/6ZBDxZMfKQVt7OSYtPM8W2kiU6au8T2/+SQo/cqy6odlWXU7ZWkV" +
+            "S/i5vz6yVveoRFXzI1mm6agss3aMiKA4QcGK3JcMYiDj6N+ZJt+runrmfd9Kx+U0sEMNPSfNrGmXZdep47LrFtbV+apFkl4lkair" +
+            "X5NlVh+VZdaYpWrjbdoiREg40P6WqasdUpXxrCyrdqc0w7j6a/d/hO5GluaavilVVcllKuOLMnXVG1K1cYtUbcyXqIxFUlV1nkRd" +
+            "kybNNv1Soqr6AdUe/PMP5aHcH/k/6uPsTYRn78wAAAAASUVORK5CYII=";
+
         public static Image DaCache(string task)
         {
+            if (string.Equals(task, "Aera_Replicator", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    byte[] d = Convert.FromBase64String(IconaReplicator);
+                    using (var m = new MemoryStream(d)) return Image.FromStream(m);
+                }
+                catch { }
+            }
+
             try
             {
                 string f = FileCache(task);
