@@ -57,7 +57,7 @@ namespace AeraControl
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.18";
+        public const string Numero = "1.6.19";
     }
 
     // ------------------------------------------------------------------
@@ -2532,6 +2532,7 @@ namespace AeraControl
 
             var nota = new Label();
             nota.Text = "il nome del server viene aggiunto da solo";
+            // si puo' anche lasciare tutto vuoto: vedi ProvaESalva
             nota.Location = new Point(112, 74);
             nota.Size = new Size(280, 16);
             nota.ForeColor = Stile.TestoTenue;
@@ -2732,6 +2733,18 @@ namespace AeraControl
         // Avvio con Windows e dirottamento dei palmari: riguardano
         // questo computer e si applicano comunque, anche se il server
         // non risponde. Restituisce il guaio, o vuoto se e' andata.
+        // Le spunte di questa finestra, che valgono su questa
+        // macchina e non dipendono dal collegamento.
+        private void ApplicaImpostazioniLocali()
+        {
+            Config.AvvioConWindows = chkConWindows.Checked;
+            Config.AvvioApplicativi = chkApplicativi.Checked;
+            Config.RiavviaProxyOrderman = chkProxy.Checked;
+            Config.DaAvviare.Clear();
+            for (int i = 0; i < applicativi.Length && i < elencoApp.Items.Count; i++)
+                if (elencoApp.GetItemChecked(i)) Config.DaAvviare.Add(applicativi[i].NomeTask);
+        }
+
         private string ApplicaLocali()
         {
             // Serve anche quando la spunta non cambia ma la redirezione
@@ -2773,10 +2786,30 @@ namespace AeraControl
 
         private void ProvaESalva(object sender, EventArgs e)
         {
-            if (txtServer.Text.Trim().Length == 0 || txtUtente.Text.Trim().Length == 0)
+            // Il collegamento non e' obbligatorio. Sul server questa
+            // console serve anche solo a tenere d'occhio e a far
+            // ripartire gli applicativi che stanno qui: in quel caso
+            // non c'e' nessun server remoto da indicare, e pretendere
+            // server e utente impediva di salvare il resto.
+            bool senzaCollegamento = (txtServer.Text.Trim().Length == 0 ||
+                                      txtUtente.Text.Trim().Length == 0);
+
+            if (senzaCollegamento)
             {
-                lblEsito.ForeColor = Color.Firebrick;
-                lblEsito.Text = "Compilare server e utente.";
+                Config.Server = "";
+                Config.Utente = "";
+                Config.Password = "";
+
+                ApplicaImpostazioniLocali();
+                string guaioLocale = ApplicaLocali();
+                Config.Salva();
+
+                lblEsito.ForeColor = Stile.TestoTenue;
+                lblEsito.Text = (guaioLocale.Length > 0)
+                    ? ("Salvato senza collegamento, ma: " + guaioLocale)
+                    : "Salvato senza collegamento: restano solo le funzioni locali.";
+
+                DialogResult = DialogResult.OK;
                 return;
             }
 
@@ -2790,12 +2823,7 @@ namespace AeraControl
             Config.Utente = utente;
             txtUtente.Text = utente;
 
-            Config.AvvioConWindows = chkConWindows.Checked;
-            Config.AvvioApplicativi = chkApplicativi.Checked;
-            Config.RiavviaProxyOrderman = chkProxy.Checked;
-            Config.DaAvviare.Clear();
-            for (int i = 0; i < applicativi.Length && i < elencoApp.Items.Count; i++)
-                if (elencoApp.GetItemChecked(i)) Config.DaAvviare.Add(applicativi[i].NomeTask);
+            ApplicaImpostazioniLocali();
 
             lblEsito.ForeColor = Color.Gray;
             lblEsito.Text = "Verifica in corso...";

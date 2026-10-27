@@ -33,7 +33,7 @@ param(
 # solo nella cartella di lavoro, fuori dal controllo di versione, e
 # nessuno se ne accorgeva. Ora sta in src/ e la compilazione controlla
 # anche lui.
-$VersioneServer = "1.6.18"
+$VersioneServer = "1.6.19"
 
 # Utente proprietario delle attivita' pianificate.
 # Le finestre compaiono nella sessione di QUESTO utente: deve essere
@@ -713,13 +713,53 @@ else {
             # Avviato tramite l'attivita' per farlo girare come
             # l'utente scelto e non come l'amministratore che sta
             # eseguendo questo script.
+            #
+            # Start-ScheduledTask torna subito e non fallisce nemmeno
+            # quando l'attivita' non puo' partire davvero, perche' il
+            # suo utente non ha una sessione aperta: prima qui si
+            # scriveva "Segnalatore avviato" senza che fosse comparso
+            # niente accanto all'orologio. Adesso si guarda il
+            # processo.
             if ($autoTray) {
-                try {
-                    Start-ScheduledTask -TaskName "Aera_Segnalatore" -ErrorAction Stop
+                try { Start-ScheduledTask -TaskName "Aera_Segnalatore" -ErrorAction Stop }
+                catch { }
+
+                $su = $null
+                for ($i = 0; $i -lt 20 -and -not $su; $i++) {
+                    Start-Sleep -Milliseconds 500
+                    $su = Get-Process AeraTray -ErrorAction SilentlyContinue
+                }
+
+                if ($su) {
                     Scrivi-Ok "Segnalatore avviato"
                 }
-                catch {
-                    Scrivi-Info "Partira' al prossimo accesso"
+                else {
+                    # Se l'utente delle attivita' e' quello che sta
+                    # installando, la sessione c'e' e si puo' aprire
+                    # direttamente. Altrimenti non c'e' nessuna
+                    # scrivania dove mostrarlo.
+                    $stessoUtente = ($identita.Name -eq $Utente)
+
+                    if ($stessoUtente) {
+                        try {
+                            Start-Process -FilePath $exeTray -WorkingDirectory $cartellaTray
+                            Start-Sleep -Seconds 2
+                            $su = Get-Process AeraTray -ErrorAction SilentlyContinue
+                        }
+                        catch { }
+                    }
+
+                    if ($su) {
+                        Scrivi-Ok "Segnalatore avviato"
+                    }
+                    elseif ($connessi -notcontains $Utente) {
+                        Scrivi-Avviso "Segnalatore non avviato: $Utente non ha una sessione aperta"
+                        Scrivi-Info "Comparira' al suo prossimo accesso. Con l'autologon"
+                        Scrivi-Info "attivo succede al primo riavvio."
+                    }
+                    else {
+                        Scrivi-Avviso "Segnalatore non partito: controllare l'attivita' Aera_Segnalatore"
+                    }
                 }
             }
 
