@@ -57,7 +57,7 @@ namespace AeraControl
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.13";
+        public const string Numero = "1.6.14";
     }
 
     // ------------------------------------------------------------------
@@ -2968,6 +2968,14 @@ namespace AeraControl
                         "Aera_RestaurantPocket",
                         "RestaurantPocketSol.exe",
                         @"C:\Aera\RestaurantPocketSol\RestaurantPocketSol.exe"),
+
+            // Non sta nella mappa del pulsante Palmari: AeraRestaurant
+            // non lo lancia, e non va riavviato a ogni pressione mentre
+            // sta replicando. Lo tiene su il guardiano.
+            new AppInfo("Aera Replicator",
+                        "Aera_Replicator",
+                        "AeraReplicator.exe",
+                        @"C:\Aera\AeraReplicator\AeraReplicator.exe"),
 
             // Questo e' un servizio di Windows, non un'attivita'
             // pianificata: si comanda con sc invece che con schtasks.

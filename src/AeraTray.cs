@@ -43,7 +43,7 @@ namespace AeraTray
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.13";
+        public const string Numero = "1.6.14";
     }
 
     public class Applicativo
@@ -593,6 +593,8 @@ namespace AeraTray
                             @"C:\Aera\Remote_Function\AeraRemoteServer.exe"),
             new Applicativo("Restaurant Pocket Sol", "Aera_RestaurantPocket", "RestaurantPocketSol",
                             @"C:\Aera\RestaurantPocketSol\RestaurantPocketSol.exe"),
+            new Applicativo("Aera Replicator", "Aera_Replicator", "AeraReplicator",
+                            @"C:\Aera\AeraReplicator\AeraReplicator.exe"),
 
             new Applicativo("Orderman Classic Proxy", "OrdermanClassicProxy",
                             "ClassicProxyService",

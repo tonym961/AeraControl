@@ -33,7 +33,7 @@ param(
 # solo nella cartella di lavoro, fuori dal controllo di versione, e
 # nessuno se ne accorgeva. Ora sta in src/ e la compilazione controlla
 # anche lui.
-$VersioneServer = "1.6.13"
+$VersioneServer = "1.6.14"
 
 # Utente proprietario delle attivita' pianificate.
 # Le finestre compaiono nella sessione di QUESTO utente: deve essere
@@ -62,6 +62,12 @@ $Applicativi = @(
         Task     = "Aera_RestaurantPocket"
         Exe      = "C:\Aera\RestaurantPocketSol\RestaurantPocketSol.exe"
         Processo = "RestaurantPocketSol"
+    }
+    @{
+        Titolo   = "Aera Replicator"
+        Task     = "Aera_Replicator"
+        Exe      = "C:\Aera\AeraReplicator\AeraReplicator.exe"
+        Processo = "AeraReplicator"
     }
 )
 
