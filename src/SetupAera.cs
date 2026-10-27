@@ -35,7 +35,7 @@ namespace SetupAera
     // AeraTray.cs. La nota estesa sta in AeraControl.cs.
     public static class Versione
     {
-        public const string Numero = "1.6.22";
+        public const string Numero = "1.6.23";
     }
 
     // ------------------------------------------------------------------
@@ -1218,7 +1218,7 @@ namespace SetupAera
             if (Risorse.Scrivi("icona.ico", Path.Combine(Cartella, "icona.ico"), out guaio))
                 Log("[OK] icona");
 
-            Collegamenti();
+            Collegamenti(false);
             CopiaInstallatore();
             VoceDisinstalla();
             PuliziaVecchie();
@@ -1232,7 +1232,7 @@ namespace SetupAera
         // posto, e sono questi i padroni dei collegamenti. La console
         // non ne crea piu' all'avvio, altrimenti sul desktop ne
         // comparivano due, una dall'installazione e una dall'apertura.
-        private void Collegamenti()
+        private void Collegamenti(bool ancheSegnalatore)
         {
             string bersaglio = Path.Combine(Cartella, "AeraControl.exe");
 
@@ -1271,6 +1271,25 @@ namespace SetupAera
                 }
             }
             catch { }
+
+            // Il segnalatore solo nel menu Start, fra i programmi: sul
+            // desktop resta un'icona sola. Serve per riaprirlo se lo
+            // si chiude, senza andarselo a cercare nella cartella.
+            if (ancheSegnalatore)
+            {
+                try
+                {
+                    string segnalatore = Path.Combine(Cartella, "AeraTray.exe");
+                    if (File.Exists(segnalatore) &&
+                        !string.IsNullOrEmpty(menu) && Directory.Exists(menu))
+                    {
+                        Collegamento(Path.Combine(menu, "AeraControl - Segnalatore.lnk"),
+                                     segnalatore);
+                        Log("[OK] segnalatore nel menu Start");
+                    }
+                }
+                catch { }
+            }
 
             if (fatti == 2)      Log("[OK] collegamenti creati: desktop e menu Start");
             else if (fatti == 1) Log("[OK] collegamento creato");
@@ -1404,7 +1423,7 @@ namespace SetupAera
             // Anche sul server: la console serve per provare da li',
             // e senza collegamento bisognerebbe andarsela a cercare
             // nella cartella.
-            Collegamenti();
+            Collegamenti(true);
             CopiaInstallatore();
             VoceDisinstalla();
             PuliziaVecchie();
