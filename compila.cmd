@@ -42,7 +42,7 @@ echo --- console (client) ---
 if errorlevel 1 exit /b 1
 
 echo --- segnalatore (server) ---
-"%CSC%" /nologo /target:winexe /optimize+ ^
+"%CSC%" /nologo /target:winexe /optimize+ /win32icon:"%R%icona.ico" ^
   /out:"%D%\AeraTray.exe" /reference:System.dll /reference:System.Drawing.dll ^
   /reference:System.Windows.Forms.dll "%R%src\AeraTray.cs"
 if errorlevel 1 exit /b 1
