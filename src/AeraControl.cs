@@ -57,7 +57,7 @@ namespace AeraControl
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.21";
+        public const string Numero = "1.6.22";
     }
 
     // ------------------------------------------------------------------
@@ -1248,7 +1248,7 @@ namespace AeraControl
             return true;
         }
 
-        private static bool EQuestaMacchina(string server)
+        public static bool EQuestaMacchina(string server)
         {
             try
             {
@@ -1762,6 +1762,47 @@ namespace AeraControl
                                  Config.Utente, Config.Password);
         }
 
+        // Vero quando il "server" e' questa stessa macchina, oppure
+        // quando non ne e' stato indicato nessuno.
+        //
+        // In quel caso i comandi si danno qui e basta: niente /s,
+        // niente credenziali, niente sessione di rete. Verso se stessi
+        // le credenziali non servono, e passarle fa fallire il comando
+        // invece di aiutare.
+        public static bool Locale
+        {
+            get
+            {
+                string s = (Config.Server == null) ? "" : Config.Server.Trim();
+                if (s.Length == 0) return true;
+                return Palmari.EQuestaMacchina(s);
+            }
+        }
+
+        // Per schtasks, tasklist e taskkill
+        private static string Dove()
+        {
+            return Locale ? "" : (" /s " + Config.Server + Credenziali());
+        }
+
+        // La cartella dell'applicazione: questa quando si lavora in
+        // locale, quella del server per condivisione amministrativa
+        // quando si lavora da un client.
+        public static string Cartella
+        {
+            get
+            {
+                if (Locale) return Installazione.Cartella;
+                return "\\\\" + Config.Server + "\\C$\\iotatau\\AeraControl";
+            }
+        }
+
+        // sc vuole il nome macchina davanti, senza /s
+        private static string DoveSc()
+        {
+            return Locale ? "" : ("\\\\" + Config.Server + " ");
+        }
+
         public static Esito Esegui(string exe, string argomenti, int timeoutMs)
         {
             var esito = new Esito();
@@ -1825,6 +1866,10 @@ namespace AeraControl
         // password con &, | o ^ verrebbe interpretata dalla shell.
         public static Esito Connetti()
         {
+            // Verso se stessi non c'e' nessuna sessione da aprire, e
+            // net use fallirebbe.
+            if (Locale) { var ok = new Esito(); ok.Codice = 0; return ok; }
+
             // Windows non ammette due sessioni con credenziali diverse
             // verso lo stesso server: si chiude sempre la precedente.
             Esegui("net.exe",
@@ -1852,7 +1897,7 @@ namespace AeraControl
         private static Dictionary<string, StatoApp> ProvaTasklist(out string motivo)
         {
             Esito e = Esegui("tasklist.exe",
-                             "/s " + Config.Server + Credenziali() + " /fo csv /nh",
+                             Dove() + " /fo csv /nh",
                              TimeoutTasklist);
 
             motivo = "";
@@ -1908,8 +1953,7 @@ namespace AeraControl
             motivo = "";
 
             Esito e = Esegui("schtasks.exe",
-                             string.Format("/query /s {0}{1} /fo csv /nh",
-                                           Config.Server, Credenziali()),
+                             string.Format("/query{0} /fo csv /nh", Dove()),
                              TimeoutElenco);
 
             if (!e.Ok) { motivo = e.Messaggio; return null; }
@@ -1957,7 +2001,7 @@ namespace AeraControl
         {
             try
             {
-                string f = "\\\\" + Config.Server + "\\C$\\iotatau\\AeraControl\\stato.txt";
+                string f = Path.Combine(Cartella, "stato.txt");
                 if (!File.Exists(f)) return null;
 
                 // Se il segnalatore non gira piu', il file resta li'
@@ -2117,10 +2161,39 @@ namespace AeraControl
         {
             if (app.EServizio) return Servizio("start", app.Servizio);
 
-            return Esegui("schtasks.exe",
-                          string.Format("/run /s {0}{1} /tn \"{2}\"",
-                                        Config.Server, Credenziali(), app.NomeTask),
-                          TimeoutNormale);
+            Esito e = Esegui("schtasks.exe",
+                             string.Format("/run{0} /tn \"{1}\"", Dove(), app.NomeTask),
+                             TimeoutNormale);
+
+            if (e.Ok) return e;
+
+            // L'attivita' pianificata non c'e' o ha rifiutato. Da
+            // remoto non si puo' fare altro, ma qui si: si apre
+            // l'eseguibile. Serve sulle macchine dove le attivita' non
+            // sono mai state create, o dove e' stato aggiunto un
+            // applicativo dopo l'ultima installazione.
+            if (Locale && app.Percorso.Length > 0 && File.Exists(app.Percorso))
+            {
+                try
+                {
+                    var psi = new ProcessStartInfo(app.Percorso);
+                    psi.UseShellExecute = true;
+                    psi.WorkingDirectory = Path.GetDirectoryName(app.Percorso);
+                    Process.Start(psi);
+
+                    var aperto = new Esito();
+                    aperto.Codice = 0;
+                    aperto.Output = "aperto direttamente: l'attivita' " +
+                                    app.NomeTask + " non e' disponibile";
+                    return aperto;
+                }
+                catch (Exception ex)
+                {
+                    e.Output = e.Output + " | apertura diretta non riuscita: " + ex.Message;
+                }
+            }
+
+            return e;
         }
 
         // Si ferma il PROCESSO, non l'istanza dell'attivita'.
@@ -2147,8 +2220,7 @@ namespace AeraControl
             if (immagine.Length > 0)
             {
                 Esito e = Esegui("taskkill.exe",
-                                 string.Format("/s {0}{1} /f /im \"{2}\"",
-                                               Config.Server, Credenziali(), immagine),
+                                 string.Format("{0} /f /im \"{1}\"", Dove(), immagine),
                                  TimeoutNormale);
 
                 // 128 = nessun processo con quel nome: non e' un guasto,
@@ -2159,8 +2231,7 @@ namespace AeraControl
             // Ripiego: se taskkill non e' utilizzabile resta la vecchia
             // strada, che almeno chiude cio' che l'attivita' ha avviato.
             return Esegui("schtasks.exe",
-                          string.Format("/end /s {0}{1} /tn \"{2}\"",
-                                        Config.Server, Credenziali(), app.NomeTask),
+                          string.Format("/end{0} /tn \"{1}\"", Dove(), app.NomeTask),
                           TimeoutNormale);
         }
 
@@ -2175,7 +2246,7 @@ namespace AeraControl
         {
             try
             {
-                string f = "\\\\" + Config.Server + "\\C$\\iotatau\\AeraControl\\fermati.txt";
+                string f = Path.Combine(Cartella, "fermati.txt");
 
                 var righe = new List<string>();
                 try
@@ -2208,8 +2279,7 @@ namespace AeraControl
         private static Esito Servizio(string verbo, string nome)
         {
             return Esegui("sc.exe",
-                          string.Format("\\\\{0} {1} \"{2}\"",
-                                        Config.Server, verbo, nome),
+                          string.Format("{0}{1} \"{2}\"", DoveSc(), verbo, nome),
                           TimeoutNormale);
         }
 
@@ -2224,7 +2294,7 @@ namespace AeraControl
             nonInstallato = false;
 
             Esito e = Esegui("sc.exe",
-                             string.Format("\\\\{0} query \"{1}\"", Config.Server, nome),
+                             string.Format("{0}query \"{1}\"", DoveSc(), nome),
                              TimeoutBreve);
 
             if (!e.Ok)

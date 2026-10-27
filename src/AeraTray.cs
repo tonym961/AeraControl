@@ -43,7 +43,7 @@ namespace AeraTray
     // ------------------------------------------------------------------
     public static class Versione
     {
-        public const string Numero = "1.6.21";
+        public const string Numero = "1.6.22";
     }
 
     public class Applicativo
@@ -1433,10 +1433,38 @@ namespace AeraTray
             Guardiano();
         }
 
+        // Un segnaposto non e' l'applicativo.
+        //
+        // Dove il pulsante Palmari e' dirottato, nella cartella
+        // presenza\ girano copie vuote che portano il nome degli
+        // applicativi veri, giusto per far accendere la spia di
+        // AeraRestaurant. Contandole, il guardiano credeva tutto a
+        // posto e non avviava mai niente: lo si vedeva dal registro,
+        // dove compariva soltanto l'unico applicativo senza
+        // segnaposto.
         private static bool InEsecuzione(Applicativo a)
         {
             if (a.EServizio) return ServizioAttivo(a.Servizio);
-            try { return Process.GetProcessesByName(a.Processo).Length > 0; }
+
+            try
+            {
+                foreach (Process p in Process.GetProcessesByName(a.Processo))
+                {
+                    try
+                    {
+                        string dove = p.MainModule.FileName;
+                        if (dove.IndexOf(@"\presenza\", StringComparison.OrdinalIgnoreCase) >= 0)
+                            continue;
+                    }
+                    catch
+                    {
+                        // Percorso non leggibile: meglio darlo per
+                        // buono che riavviare un applicativo gia' su.
+                    }
+                    return true;
+                }
+                return false;
+            }
             catch { return false; }
         }
 
